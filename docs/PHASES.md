@@ -216,12 +216,47 @@ system partitions as critically full — five false criticals on a normal machin
 Read-only volumes and anything under 4 GB are now skipped, which matters as much
 on Windows (recovery partitions, mounted ISOs) as here.
 
-## Phase 6 — Voice · next
-VAD → faster-whisper → core → Piper, openWakeWord ("Jarvis"), push-to-talk,
-barge-in, visible mic state.
-*Gate:* a spoken command executes end to end on real hardware.
+## Phase 6 — Voice · **done (pipeline); audio capture pending**
 
-## Phase 7 — Browser · planned
+Shipped: the full pipeline — ring-buffered capture, voice activity detection,
+speech-to-text, text-to-speech, wake word, barge-in, and a state machine whose
+every transition is observable.
+
+**Three commitments implemented, not just described:**
+
+*Barge-in is mandatory.* The microphone stays live during playback and sustained
+speech cancels it mid-sentence. A short burst does not, so the assistant's own
+audio leaking back through the microphone cannot interrupt it.
+
+*The microphone state is always visible.* Every transition goes through one
+method that notifies the interface. There is no code path that captures audio
+without the indicator changing.
+
+*Degradation is explicit.* A missing component names itself and its download
+size — "the base.en speech model has not been downloaded yet (74 MB)" — rather
+than silently falling back or pretending to listen.
+
+**Why the pre-roll buffer matters:** 1.5 seconds of audio from *before* speech
+is detected is kept, so the first word of "Jarvis, open Chrome" is never
+clipped. Without it the wake word eats the beginning of every command.
+
+**Why `hey_jarvis`:** openWakeWord ships it pretrained, so voice needs no
+training data and its accuracy comes from a model trained on far more speakers
+than we could gather. This is the reason the assistant has this name.
+
+**Verified on Linux (31 tests):** VAD onset, hangover, pre-roll, the
+brief-noise rejection and the maximum-length cap; sentence chunking; every
+pipeline state transition; barge-in including the short-burst and
+silence-reset cases; empty transcripts not becoming turns; and that a missing
+component reports its name and size.
+
+**Not verified / not wired:** the desktop shell does not yet feed microphone
+audio to the pipeline, and the models (~130 MB) are not downloaded, so no
+spoken command has gone end to end. The Phase 6 gate — a spoken command
+executing on real hardware — is **not met**. The interface says so rather than
+offering a microphone button that does nothing.
+
+## Phase 7 — Browser · next
 Playwright-driven navigation, extraction, gated form fill, `WebSearchTool`.
 *Gate:* navigate + extract + a confirmation-gated form submission.
 

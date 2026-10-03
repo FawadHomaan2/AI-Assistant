@@ -6,7 +6,7 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 5 of 12 — files, documents, apps, processes, system.**
+> **Current state: Phase 6 of 12 — plus the voice pipeline.**
 > Jarvis works with your files, reads documents, starts installed programs,
 > manages windows, reports what is running, and diagnoses why the machine is
 > slow by measuring it.
@@ -193,7 +193,7 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 
 # Python core
 cd services/jarvis
-.venv/bin/python -m pytest -q      # 496 tests, incl. 52 path-jail escape attempts
+.venv/bin/python -m pytest -q      # 527 tests, incl. 52 path-jail escape attempts
 .venv/bin/ruff check . && .venv/bin/mypy jarvis    # strict
 
 # Palette

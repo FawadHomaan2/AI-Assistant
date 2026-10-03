@@ -286,25 +286,40 @@ describe('store: system metrics', () => {
 describe('store: voice', () => {
   beforeEach(reset);
 
-  it('explains that the pipeline is missing instead of pretending to listen', () => {
+  // The core names the missing model and its size; the UI relays that rather
+  // than saying "voice is not available".
+  it('relays the specific reason from the core', () => {
+    useStore.setState({
+      voice: 'unavailable',
+      voiceReason: "The 'faster-whisper' package is not installed (74 MB).",
+    });
+    useStore.getState().toggleVoice();
+    expect(useStore.getState().messages.at(-1)?.content).toContain('faster-whisper');
+    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+  });
+
+  it('never claims to be listening when it is not', () => {
+    useStore.setState({ voice: 'unavailable', voiceReason: 'models missing' });
     useStore.getState().toggleVoice();
     expect(useStore.getState().voice).toBe('unavailable');
-    expect(useStore.getState().messages.at(-1)?.content).toContain('Phase 6');
   });
 });
 
 describe('phase gating', () => {
   beforeEach(reset);
 
-  it('shipped phase matches the system-tools phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.systemTools);
+  it('shipped phase matches the voice phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.voice);
   });
 
   // An action that claims to be available must have something behind it.
-  it('available quick actions carry a template; gated ones do not', () => {
+  it('available quick actions do something; gated ones do not', () => {
     for (const a of QUICK_ACTIONS) {
       if (a.availableIn <= CURRENT_PHASE) {
-        expect(a.template, `${a.label} is available but has no template`).toBeTruthy();
+        expect(
+          a.template ?? a.handler,
+          `${a.label} is available but has neither a template nor a handler`,
+        ).toBeTruthy();
       } else {
         expect(a.template, `${a.label} is gated but carries a template`).toBeUndefined();
       }

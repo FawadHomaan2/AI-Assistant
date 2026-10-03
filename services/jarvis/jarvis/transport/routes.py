@@ -153,6 +153,22 @@ async def revoke_scope(request: Request, scope: str) -> dict[str, object]:
     return {"granted": False, "scopes": ctx.policy.grants.describe()}
 
 
+@router.get("/voice/status")
+async def voice_status(request: Request) -> dict[str, object]:
+    ctx = _ctx(request)
+    status = ctx.voice.status()
+    return {
+        **status.to_dict(),
+        "state": ctx.voice.state.value,
+        "reason": ctx.voice.unavailable_reason(),
+        "settings": {
+            "enabled": ctx.settings.voice.enabled,
+            "wakeWord": ctx.settings.voice.wake_word,
+            "pushToTalk": ctx.settings.voice.push_to_talk,
+        },
+    }
+
+
 @router.get("/documents/formats")
 async def document_formats(request: Request) -> list[dict[str, object]]:
     del request

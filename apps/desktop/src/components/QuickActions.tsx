@@ -17,6 +17,7 @@ export function QuickActions() {
   const pushMessage = useStore((s) => s.pushMessage);
   const logActivity = useStore((s) => s.logActivity);
   const setDraft = useStore((s) => s.setDraft);
+  const toggleVoice = useStore((s) => s.toggleVoice);
 
   return (
     <section className="quick" aria-label="Quick actions">
@@ -36,6 +37,10 @@ export function QuickActions() {
                 // An available action pre-fills the composer so the user can
                 // adjust it before anything runs. An unavailable one says which
                 // phase delivers it rather than pretending to work.
+                if (ready && a.handler === 'voice') {
+                  toggleVoice();
+                  return;
+                }
                 if (ready && a.template) {
                   setDraft(a.template);
                   logActivity({ summary: `Quick action: ${a.label}`, status: 'succeeded', detail: a.template });

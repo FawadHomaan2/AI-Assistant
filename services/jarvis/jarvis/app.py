@@ -35,6 +35,10 @@ from jarvis.transport import routes
 from jarvis.transport.auth import AuthMiddleware
 from jarvis.util.errors import JarvisError
 from jarvis.util.logging import get_logger
+from jarvis.voice.pipeline import VoicePipeline, VoiceSettings
+from jarvis.voice.stt import WhisperSpeechToText
+from jarvis.voice.tts import PiperTextToSpeech
+from jarvis.voice.wake import OpenWakeWordDetector
 
 log = get_logger(__name__)
 
@@ -59,6 +63,7 @@ class Context:
     consent: ConsentBroker
     registry: ToolRegistry
     executor: Executor
+    voice: VoicePipeline
     version: str = VERSION
 
 
@@ -92,6 +97,18 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     registry.register(PowerShellTool())
 
     executor = Executor(registry, policy, consent, audit, estop)
+
+    # The voice pipeline is constructed either way; it reports what it is
+    # missing rather than being absent, so the interface can offer the download.
+    voice = VoicePipeline(
+        WhisperSpeechToText(),
+        PiperTextToSpeech(),
+        OpenWakeWordDetector(settings.voice.wake_word),
+        settings=VoiceSettings(
+            enabled=settings.voice.enabled,
+            push_to_talk=settings.voice.push_to_talk,
+        ),
+    )
     orchestrator = Orchestrator(gateway, sessions, turns, audit, estop, executor)
 
     return Context(
@@ -109,6 +126,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         consent=consent,
         registry=registry,
         executor=executor,
+        voice=voice,
     )
 
 

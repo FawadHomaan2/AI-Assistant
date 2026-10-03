@@ -128,6 +128,44 @@ export function clearEmergencyStop(): Promise<ApiResult<{ engaged: boolean }>> {
   return request('/emergency-stop', { method: 'DELETE' });
 }
 
+export interface VoiceComponent {
+  name: string;
+  available: boolean;
+  detail: string;
+  model: string;
+  downloadMb: number;
+}
+
+export interface VoiceStatus {
+  ready: boolean;
+  state: string;
+  reason: string;
+  components: VoiceComponent[];
+  missing: string[];
+}
+
+export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
+  const res = await request<Record<string, unknown>>('/voice/status');
+  if (!res.ok) return res;
+  const raw = res.value;
+  return {
+    ok: true,
+    value: {
+      ready: Boolean(raw.ready),
+      state: String(raw.state ?? 'off'),
+      reason: String(raw.reason ?? ''),
+      missing: (raw.missing as string[]) ?? [],
+      components: ((raw.components as Record<string, unknown>[]) ?? []).map((c) => ({
+        name: String(c.name),
+        available: Boolean(c.available),
+        detail: String(c.detail),
+        model: String(c.model ?? ''),
+        downloadMb: Number(c.downloadMb ?? 0),
+      })),
+    },
+  };
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

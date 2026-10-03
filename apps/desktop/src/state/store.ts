@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 5;
+export const CURRENT_PHASE = 6;
 
 export interface QuickAction {
   id: string;
@@ -49,6 +49,8 @@ export interface QuickAction {
    * that guesses at a folder is how the wrong files get touched.
    */
   template?: string;
+  /** A built-in handler, for actions that are not a chat message. */
+  handler?: 'voice';
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
@@ -95,7 +97,13 @@ export const QUICK_ACTIONS: QuickAction[] = [
     availableIn: PHASE.fileTools,
     template: 'find duplicate files in downloads',
   },
-  { id: 'voice', label: 'Voice Assistant', hint: 'Talk to Jarvis hands-free', availableIn: PHASE.voice },
+  {
+    id: 'voice',
+    label: 'Voice Assistant',
+    hint: 'Talk to Jarvis hands-free',
+    availableIn: PHASE.voice,
+    handler: 'voice',
+  },
 ];
 
 export type VoiceState = 'off' | 'unavailable' | 'listening' | 'recording' | 'thinking' | 'speaking';
@@ -151,7 +159,10 @@ interface AppState {
 
   // ── Voice (UI state only until Phase 6) ─────────────────────────────────
   voice: VoiceState;
+  /** Why voice is unavailable, straight from the core. */
+  voiceReason: string;
   toggleVoice: () => void;
+  refreshVoice: () => Promise<void>;
 
   // ── Emergency stop ──────────────────────────────────────────────────────
   triggerEmergencyStop: () => Promise<void>;
@@ -356,6 +367,8 @@ export const useStore = create<AppState>((set, get) => {
       const list = await api.providers();
       if (list.ok) set({ providers: list.value });
 
+      await get().refreshVoice();
+
       void ensureSocket().connect();
     },
 
@@ -492,16 +505,43 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     voice: 'unavailable',
+    voiceReason: '',
+
+    refreshVoice: async () => {
+      const res = await api.voiceStatus();
+      if (!res.ok) {
+        set({ voice: 'unavailable', voiceReason: res.message });
+        return;
+      }
+      set({
+        voice: res.value.ready ? (res.value.state as VoiceState) : 'unavailable',
+        voiceReason: res.value.reason,
+      });
+    },
+
     toggleVoice: () => {
+      const { voiceReason, voice } = get();
+      if (voice === 'unavailable') {
+        // The core says exactly which model is missing and how big it is, so
+        // the message is specific rather than "voice is not available".
+        get().pushMessage({
+          role: 'system',
+          notice: true,
+          content:
+            voiceReason ||
+            'Voice is not available. The core could not be reached to say why.',
+        });
+        get().logActivity({ summary: 'Voice unavailable', status: 'blocked', detail: voiceReason });
+        return;
+      }
       get().pushMessage({
         role: 'system',
         notice: true,
         content:
-          `Voice needs the speech pipeline from Phase ${PHASE.voice} ` +
-          '(local wake word, speech-to-text and text-to-speech). The button and ' +
-          'microphone indicator are built; there is no audio capture behind them yet.',
+          'Audio capture runs in the desktop shell, which is not wired to the ' +
+          'microphone yet. The pipeline behind it is built and reports ready.',
       });
-      get().logActivity({ summary: 'Voice requested (pipeline not implemented)', status: 'blocked' });
+      get().logActivity({ summary: 'Voice requested', status: 'blocked' });
     },
 
     triggerEmergencyStop: async () => {

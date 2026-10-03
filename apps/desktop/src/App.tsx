@@ -25,7 +25,13 @@ export function App() {
   const setView = useStore((s) => s.setView);
   const triggerEmergencyStop = useStore((s) => s.triggerEmergencyStop);
   const logActivity = useStore((s) => s.logActivity);
+  const connectCore = useStore((s) => s.connectCore);
   const Current = VIEWS[view];
+
+  // Start (or attach to) the Jarvis core once, on mount.
+  useEffect(() => {
+    void connectCore();
+  }, [connectCore]);
 
   // In-app emergency stop. Ctrl+Shift+Esc is also Windows' Task Manager
   // shortcut, which the OS claims first — so this works while Jarvis has focus,

@@ -31,6 +31,18 @@ vi.mock('@/lib/bridge', () => ({
     reason: { kind: 'no-bridge', what: 'hide_to_tray' },
   }),
   listen: vi.fn().mockResolvedValue(() => {}),
+  getCoreEndpoint: vi.fn().mockResolvedValue({
+    ok: false,
+    reason: { kind: 'no-bridge', what: 'core_endpoint' },
+  }),
+  getCoreStatus: vi.fn().mockResolvedValue({
+    ok: false,
+    reason: { kind: 'no-bridge', what: 'core_status' },
+  }),
+  restartCore: vi.fn().mockResolvedValue({
+    ok: false,
+    reason: { kind: 'no-bridge', what: 'restart_core' },
+  }),
 }));
 
 beforeEach(() => {
@@ -80,14 +92,16 @@ describe('App shell', () => {
     expect(screen.getByLabelText('Message Jarvis')).toBeTruthy();
   });
 
-  it('sends on Enter and shows the not-implemented notice', async () => {
+  it('sends on Enter and explains that no core is reachable', async () => {
     const user = userEvent.setup();
     await renderApp();
     await user.type(screen.getByLabelText('Message Jarvis'), 'Open Chrome{Enter}');
     // Scope to the conversation: the activity log echoes the same text.
     const log = within(screen.getByRole('log', { name: /conversation/i }));
     expect(log.getByText('Open Chrome')).toBeTruthy();
-    expect(log.getByText(/needs the AI core/i)).toBeTruthy();
+    // No shell under test means no core, so the UI must say so rather than
+    // invent a reply.
+    expect(log.getByText(/core isn't available|Still connecting/i)).toBeTruthy();
   });
 
   it('Shift+Enter inserts a newline instead of sending', async () => {

@@ -30,14 +30,41 @@ WebView2 rendering, the NSIS installer.
 
 ---
 
-## Phase 2 — AI core · planned
-FastAPI sidecar on loopback with a per-launch token, provider gateway
-(llama.cpp / Ollama / OpenAI-compatible / Anthropic), router → planner →
-executor skeleton, SQLite with migrations, structured logging, streaming
-WebSocket into the UI.
-*Gate:* a message typed in the UI reaches a model and streams back.
+## Phase 2 — AI core · **done**
 
-## Phase 3 — Filesystem & documents · planned
+Shipped:
+- **Python core** (`services/jarvis`) spawned and supervised by the Rust shell.
+  It binds an ephemeral loopback port, mints a one-time bearer token, and writes
+  a single JSON handshake line to stdout; the token never touches disk.
+- **Transport:** FastAPI over loopback, bearer auth with constant-time compare,
+  Origin/Host checks, and a WebSocket that streams agent events into the UI.
+- **Provider gateway:** one interface, four implementations — Anthropic,
+  OpenAI-compatible (covers LM Studio / vLLM / llama.cpp server / OpenRouter /
+  Azure), Ollama, and a development echo. Per-job routing, typed errors.
+- **Privacy classes + egress gate:** `SENSITIVE` payloads raise rather than being
+  filtered; cloud and file-content egress are separate opt-ins; secrets are
+  redacted and payloads size-capped before any network call.
+- **Persistence:** SQLite with forward-only migrations, sessions and turns, and a
+  hash-chained audit log whose chain is verified through the API.
+- **Agents:** rule-based router plus an orchestrator that intercepts every intent
+  needing tools and answers with a capability notice.
+- Structured logging with a redaction processor; secrets in the OS credential
+  store, never in `config.toml`.
+
+**Why the router intercepts.** A capable model asked to "open Chrome" replies
+"Done!". Routing a computer task to the model would make Jarvis lie the moment a
+real provider is configured, so the agent layer — not a prompt instruction —
+stops those requests before any model sees them. There are tests for exactly this.
+
+**Verified on Linux:** 128 core tests (incl. a test that spawns the real process
+and checks the handshake, port and token), 71 frontend tests, strict `mypy`,
+`ruff`, `tsc`, `cargo clippy`, plus an end-to-end run against the real core over a
+real WebSocket: 72 streamed deltas, computer task intercepted, 4 turns persisted,
+audit chain intact, emergency stop honoured.
+**Needs Windows to verify:** sidecar spawn from the packaged `externalBin`, and
+the Credential Manager backend (`keyring` reports no usable backend headlessly).
+
+## Phase 3 — Filesystem & documents · next
 `FileSystemTool`, path jail, Policy Engine, consent broker, hash-chained audit
 log, `DocumentTool` (PDF/DOCX/XLSX/TXT/CSV read + summarise).
 *Gate:* traversal attempts rejected by tests; no tool reachable without the gate.

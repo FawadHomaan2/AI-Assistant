@@ -12,12 +12,13 @@
 
 mod estop;
 mod hotkey;
+mod sidecar;
 mod system;
 mod tray;
 mod window;
 
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[derive(Serialize)]
 struct ShellInfo {
@@ -58,6 +59,7 @@ pub fn run() {
         .plugin(hotkey::plugin())
         .manage(system::Sampler::new())
         .manage(hotkey::ActiveShortcut::default())
+        .manage(sidecar::Sidecar::default())
         .invoke_handler(tauri::generate_handler![
             shell_info,
             system::system_snapshot,
@@ -66,6 +68,9 @@ pub fn run() {
             estop::emergency_stop,
             estop::clear_emergency_stop,
             estop::emergency_stop_state,
+            sidecar::core_endpoint,
+            sidecar::core_status,
+            sidecar::restart_core,
         ])
         .setup(|app| {
             let handle = app.handle();
@@ -78,6 +83,17 @@ pub fn run() {
                 log::warn!("could not register default global shortcut: {e}");
             }
 
+            // Start the Python core in the background. A failure here is
+            // reported in the UI rather than preventing the app from opening,
+            // so the user can still read the error and reach Settings.
+            let core_handle = handle.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = sidecar::start(&core_handle) {
+                    log::error!("core failed to start: {e}");
+                    let _ = core_handle.emit("jarvis://core-error", e);
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|win, event| {
@@ -89,6 +105,11 @@ pub fn run() {
                 let _ = win.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Jarvis");
+        .build(tauri::generate_context!())
+        .expect("error while building Jarvis")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+                app.state::<sidecar::Sidecar>().shutdown();
+            }
+        });
 }

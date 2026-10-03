@@ -7,7 +7,7 @@
  *     every call degrades to a typed "no-bridge" result instead of throwing.
  *     Crucially it degrades to *unavailable*, never to fabricated data.
  */
-import type { SystemSnapshot, Unavailable } from '@/types';
+import type { CoreEndpoint, SystemSnapshot, Unavailable } from '@/types';
 
 export type BridgeResult<T> = { ok: true; value: T } | { ok: false; reason: Unavailable };
 
@@ -54,6 +54,24 @@ export function emergencyStop(): Promise<BridgeResult<null>> {
 /** Register/replace the global activation shortcut. Returns the accepted accelerator. */
 export function setGlobalShortcut(accelerator: string): Promise<BridgeResult<string>> {
   return invoke<string>('set_global_shortcut', { accelerator });
+}
+
+/**
+ * Where the Python core is listening, plus the per-launch bearer token.
+ * The shell starts the core if it is not already running.
+ */
+export function getCoreEndpoint(): Promise<BridgeResult<CoreEndpoint>> {
+  return invoke<CoreEndpoint>('core_endpoint');
+}
+
+export function getCoreStatus(): Promise<
+  BridgeResult<{ running: boolean; endpoint: CoreEndpoint | null }>
+> {
+  return invoke('core_status');
+}
+
+export function restartCore(): Promise<BridgeResult<CoreEndpoint>> {
+  return invoke<CoreEndpoint>('restart_core');
 }
 
 /** Shell + app version strings for the Settings page. */

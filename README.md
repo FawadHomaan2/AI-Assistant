@@ -6,12 +6,13 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 1 of 12 — the desktop interface.**
-> The shell, tray, global shortcut, live machine stats, consent dialog and
-> emergency stop are built and tested. The AI core, the tools, voice and
-> security monitoring are **not implemented yet**, and the UI says so on every
-> surface rather than showing placeholder data. See
-> [docs/PHASES.md](docs/PHASES.md).
+> **Current state: Phase 2 of 12 — the AI core.**
+> The desktop shell and the Python core are both built and tested. Jarvis holds a
+> streaming conversation through whichever model provider you configure, keeps it
+> in SQLite, and records a tamper-evident audit trail. It **cannot act on your
+> computer yet** — files, applications, the system, voice, browsing and security
+> monitoring arrive in later phases, and every surface says so rather than
+> showing placeholder data. See [docs/PHASES.md](docs/PHASES.md).
 
 ---
 
@@ -102,10 +103,46 @@ scripts/make_icons.py  regenerates the app icons from source
 
 ### Desktop app
 ```bash
-cd apps/desktop
+# One-time: set up the Python core the shell will spawn.
+cd services/jarvis
+python -m venv .venv
+.venv/Scripts/pip install -e ".[dev,secrets]"    # macOS/Linux: .venv/bin/pip
+
+cd ../../apps/desktop
 npm install
-npm run tauri dev      # full app: window, tray, global shortcut, live metrics
+npm run tauri dev      # starts the shell, which starts the core
 ```
+
+### Core on its own
+```bash
+cd services/jarvis
+.venv/bin/python -m jarvis        # prints {"jarvis":"ready","port":…,"token":…}
+```
+Useful for poking the API with `curl`. Logs go to stderr so stdout stays a clean
+handshake line for the shell.
+
+### Choosing a model
+
+Out of the box the core runs a **development echo provider**: it reflects your
+message back and is explicitly *not* a language model. The UI says so, because a
+provider that fabricated plausible answers would make the system look like it
+worked when it did not.
+
+For real answers, edit `config.toml` in the Jarvis data folder
+(`%LOCALAPPDATA%\Jarvis` on Windows) — the easiest local option:
+
+```toml
+[ai]
+default = "ollama"
+
+[ai.providers.ollama]
+kind = "ollama"
+model = "qwen2.5:14b-instruct"
+```
+
+Cloud providers additionally need `allow_cloud = true` and an API key, which is
+stored in the Windows Credential Manager by name. `config.toml` never holds a
+key, and pasting one into the `credential` field is rejected with an explanation.
 
 ### UI only, in a browser
 ```bash
@@ -117,11 +154,20 @@ intended behaviour, not a bug.
 
 ### Checks
 ```bash
-npm run typecheck                        # tsc
-npm test                                 # 45 frontend tests
-npm run build                            # tsc + production bundle
-cd src-tauri && cargo test               # 7 Rust tests, incl. real metrics
-cd src-tauri && cargo clippy --all-targets
+# Frontend
+cd apps/desktop
+npm run typecheck && npm test && npm run build     # tsc, 71 tests, bundle
+
+# Rust shell
+cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
+
+# Python core
+cd services/jarvis
+.venv/bin/python -m pytest -q      # 128 tests, incl. a real-process handshake
+.venv/bin/ruff check . && .venv/bin/mypy jarvis    # strict
+
+# Palette
+python3 scripts/check_contrast.py                  # WCAG AA, both themes
 ```
 
 ### Build the installer (Windows only)

@@ -1,0 +1,199 @@
+"""Intent routing.
+
+Deliberately rule-based rather than model-based, for three reasons: it is
+instant, it works with no model configured, and it is deterministic enough to
+unit-test. A model-assisted pass for ambiguous input is a later refinement.
+
+Its most important job right now is **not** classification quality — it is
+preventing a configured language model from answering "Open Chrome" with "Done,
+I've opened Chrome." No tools exist until Phase 3, so a request to act on the
+computer must be intercepted here and answered honestly. Without this, adding a
+capable model would make Jarvis start lying.
+"""
+
+from __future__ import annotations
+
+import re
+
+from jarvis.agents.types import Intent, Route
+
+# Verbs that mean "change or inspect my machine", not "tell me about something".
+_ACTION_VERBS = (
+    "open",
+    "launch",
+    "start",
+    "run",
+    "close",
+    "quit",
+    "kill",
+    "minimise",
+    "minimize",
+    "maximise",
+    "maximize",
+    "switch to",
+    "focus",
+    "create",
+    "make a folder",
+    "make a directory",
+    "rename",
+    "move",
+    "copy",
+    "delete",
+    "remove",
+    "organise",
+    "organize",
+    "clean up",
+    "sort",
+    "empty",
+    "screenshot",
+    "take a screen",
+    "capture the screen",
+    "type ",
+    "click ",
+    "scroll ",
+    "press ",
+    "download",
+    "upload",
+    "install",
+    "uninstall",
+    "find ",
+    "search for",
+    "look for",
+    "locate ",
+    "list my",
+    "show me my",
+    "turn on",
+    "turn off",
+    "enable",
+    "disable",
+    "mute",
+    "unmute",
+    "set a reminder",
+    "remind me",
+)
+
+_DIAGNOSTIC = (
+    "why is my",
+    "why's my",
+    "running slow",
+    "slow computer",
+    "cpu usage",
+    "ram usage",
+    "memory usage",
+    "disk space",
+    "disk usage",
+    "what's running",
+    "whats running",
+    "which programs",
+    "what programs",
+    "running processes",
+    "task manager",
+    "battery",
+    "temperature",
+    "troubleshoot",
+    "diagnose",
+    "performance",
+)
+
+_SECURITY = (
+    "virus",
+    "malware",
+    "antivirus",
+    "defender",
+    "firewall",
+    "suspicious",
+    "security",
+    "hacked",
+    "breach",
+    "startup programs",
+    "startup apps",
+    "is anything wrong",
+    "safe",
+    "encrypted",
+    "bitlocker",
+    "phishing",
+)
+
+_MEMORY = (
+    "remember that",
+    "remember this",
+    "don't forget",
+    "dont forget",
+    "from now on",
+    "always use",
+    "always open",
+    "my preferred",
+    "i prefer",
+    "forget that",
+    "stop remembering",
+)
+
+_FILE_NOUNS = (
+    "file",
+    "files",
+    "folder",
+    "folders",
+    "directory",
+    "desktop",
+    "downloads",
+    "documents",
+    "pdf",
+    "docx",
+    "xlsx",
+    "screenshot",
+    "duplicate",
+)
+
+# Questions *about* a topic are chat, even when they contain an action verb:
+# "how do I open a port" is a question, "open chrome" is a command.
+_QUESTION_PREFIX = re.compile(
+    r"^\s*(what|what's|whats|who|when|where|why|how|which|can you explain|explain|"
+    r"tell me about|is it|are there|should i|does|do you|did|would|could you explain)\b",
+    re.IGNORECASE,
+)
+
+
+def _hits(text: str, needles: tuple[str, ...]) -> list[str]:
+    return [n for n in needles if n in text]
+
+
+def route(message: str) -> Route:
+    """Classify a user message."""
+    text = message.lower().strip()
+    if not text:
+        return Route(Intent.CHAT, 1.0, "empty message")
+
+    is_question = bool(_QUESTION_PREFIX.match(text))
+
+    if signals := _hits(text, _MEMORY):
+        return Route(Intent.MEMORY, 0.85, "asks Jarvis to remember or forget something", signals)
+
+    if signals := _hits(text, _SECURITY):
+        # "what is a firewall" is a question about security, not a scan request.
+        if is_question and not any(
+            w in text for w in ("my ", "this computer", "this pc", "check", "scan")
+        ):
+            return Route(Intent.CHAT, 0.7, "a general question that mentions security", signals)
+        return Route(Intent.SECURITY, 0.8, "asks about this machine's security state", signals)
+
+    if signals := _hits(text, _DIAGNOSTIC):
+        return Route(Intent.DIAGNOSTIC, 0.8, "asks about this machine's condition", signals)
+
+    action_signals = _hits(text, _ACTION_VERBS)
+    if action_signals:
+        starts_with_verb = any(text.startswith(v.strip()) for v in _ACTION_VERBS)
+        # A question only counts as a command when it is about the user's own
+        # things: "how do I find files in Windows" is informational,
+        # "find my CV files" is a request to act.
+        owns_the_subject = not is_question or " my " in f" {text} "
+        mentions_files = bool(_hits(text, _FILE_NOUNS)) and owns_the_subject
+        if starts_with_verb or mentions_files or not is_question:
+            confidence = 0.9 if starts_with_verb else 0.7
+            return Route(
+                Intent.COMPUTER_TASK,
+                confidence,
+                "asks Jarvis to act on this computer",
+                action_signals,
+            )
+
+    return Route(Intent.CHAT, 0.6, "conversational or informational", [])

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useStore, PHASE, CURRENT_PHASE } from '@/state/store';
+import { useStore, CURRENT_PHASE } from '@/state/store';
 import { getShellInfo, hasShell, setGlobalShortcut } from '@/lib/bridge';
 import './views.css';
 
@@ -20,6 +20,8 @@ export function SettingsView() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [shell, setShell] = useState<string>('—');
   const requestConsent = useStore((s) => s.requestConsent);
+  const providers = useStore((s) => s.providers);
+  const core = useStore((s) => s.core);
 
   useEffect(() => {
     void getShellInfo().then((r) => {
@@ -87,9 +89,48 @@ export function SettingsView() {
           />
         </div>
         <p className="card__note">
-          Inactive until the provider gateway lands in Phase {PHASE.aiCore}.
-          Saving a key here would have nowhere to go yet, so the field is
-          disabled rather than silently discarding what you type.
+          Editing providers from this page is not wired up yet — for now, edit{' '}
+          <code>config.toml</code> in the Jarvis data folder and restart. Keys go to
+          the Windows Credential Manager by name; the file never holds one.
+        </p>
+      </Card>
+
+      <Card title="Providers the core reports">
+        {providers.length === 0 ? (
+          <p className="card__note">
+            {core.state === 'ready'
+              ? 'The core reported no providers.'
+              : 'Not connected to the core, so there is nothing to list.'}
+          </p>
+        ) : (
+          <ul className="datalist">
+            {providers.map((p) => (
+              <li key={p.name}>
+                <span>
+                  {p.name}
+                  <span className="datalist__note"> · {p.model}</span>
+                </span>
+                <span className="datalist__v">
+                  <StatusBadge
+                    label={p.isCloud ? 'Cloud' : 'Local'}
+                    kind="info"
+                    tone={p.isCloud ? 'warning' : 'success'}
+                  />
+                </span>
+                <span className="datalist__v">
+                  <StatusBadge
+                    label={p.configured ? 'Ready' : 'Needs setup'}
+                    kind={p.configured ? 'ok' : 'blocked'}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="card__note">
+          {providers.find((p) => p.kind === 'dev_echo')
+            ? 'The development echo provider is not a language model — it reflects your message back so the pipeline can be exercised without one.'
+            : 'Local providers keep every prompt on this machine.'}
         </p>
       </Card>
 
@@ -200,7 +241,28 @@ export function SettingsView() {
           <li>
             <span>AI core</span>
             <span className="datalist__v">
-              <StatusBadge label={`Phase ${PHASE.aiCore}`} kind="blocked" tone="muted" />
+              {core.state === 'ready' ? (
+                <StatusBadge label={`v${core.health.version}`} kind="ok" />
+              ) : (
+                <StatusBadge
+                  label={core.state === 'connecting' ? 'Connecting' : 'Unavailable'}
+                  kind={core.state === 'connecting' ? 'pending' : 'failed'}
+                />
+              )}
+            </span>
+          </li>
+          <li>
+            <span>Credential store</span>
+            <span className="datalist__v">
+              {core.state === 'ready' ? (
+                <StatusBadge
+                  label={core.health.credentialStore.available ? 'Available' : 'Unavailable'}
+                  kind={core.health.credentialStore.available ? 'ok' : 'blocked'}
+                  title={core.health.credentialStore.detail}
+                />
+              ) : (
+                <span className="datalist__note">—</span>
+              )}
             </span>
           </li>
           <li>

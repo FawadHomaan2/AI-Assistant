@@ -106,3 +106,79 @@ export type Loadable<T> =
   | { state: 'unavailable'; reason: Unavailable };
 
 export type ViewId = 'chat' | 'security' | 'activity' | 'privacy' | 'settings';
+
+// ── Phase 2: the core ────────────────────────────────────────────────────
+
+/** Where the Python core is listening, from the Rust sidecar handshake. */
+export interface CoreEndpoint {
+  baseUrl: string;
+  wsUrl: string;
+  token: string;
+  version: string;
+  pid: number;
+}
+
+/** What the router decided a message was asking for. */
+export type IntentId = 'chat' | 'computer_task' | 'diagnostic' | 'security' | 'memory';
+
+/** Streamed agent events. Mirrors jarvis/agents/types.py. */
+export type AgentEvent =
+  | { type: 'turn.start'; turn_id: string; session_id: string }
+  | {
+      type: 'route';
+      intent: IntentId;
+      confidence: number;
+      reason: string;
+      signals: string[];
+      available_in_phase: number;
+      session_id?: string;
+    }
+  | { type: 'delta'; text: string; session_id?: string }
+  | {
+      type: 'notice';
+      message: string;
+      intent: IntentId;
+      available_in_phase: number;
+      session_id?: string;
+    }
+  | { type: 'error'; code: string; message: string; provider?: string; session_id?: string }
+  | {
+      type: 'turn.end';
+      elapsed_ms: number;
+      handled: string;
+      provider?: string;
+      model?: string;
+      is_cloud?: boolean;
+      tokens_in?: number | null;
+      tokens_out?: number | null;
+      stop_reason?: string | null;
+      session_id?: string;
+    }
+  | { type: 'pong' };
+
+export interface ProviderInfo {
+  name: string;
+  kind: string;
+  model: string;
+  streaming: boolean;
+  tools: boolean;
+  isCloud: boolean;
+  configured: boolean;
+  detail: string;
+}
+
+export interface CoreHealth {
+  status: string;
+  version: string;
+  schemaVersion: number;
+  mode: string;
+  emergencyStop: boolean;
+  defaultProvider: string;
+  credentialStore: { available: boolean; backend: string; detail: string };
+}
+
+/** Connection state of the core, so the UI can explain itself. */
+export type CoreState =
+  | { state: 'connecting' }
+  | { state: 'ready'; endpoint: CoreEndpoint; health: CoreHealth }
+  | { state: 'failed'; message: string };

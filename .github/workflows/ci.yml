@@ -40,6 +40,26 @@ jobs:
       # below its WCAG AA threshold in either theme.
       - run: python3 scripts/check_contrast.py
 
+  core:
+    name: Python core (ruff · mypy · pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/jarvis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # No `secrets` extra: the core must import and pass its tests without a
+      # desktop credential backend, which is exactly the headless CI case.
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy jarvis
+      - run: pytest -q
+
   shell:
     name: Rust shell (clippy · test)
     runs-on: ubuntu-latest

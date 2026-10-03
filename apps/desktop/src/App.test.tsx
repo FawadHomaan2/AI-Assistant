@@ -133,8 +133,8 @@ describe('App shell', () => {
   it('a gated quick action names the phase it needs rather than acting', async () => {
     const user = userEvent.setup();
     await renderApp();
-    await user.click(screen.getByRole('button', { name: /Plugins/ }));
-    expect(screen.getByText(/needs Phase 11/i)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Set a Reminder/ }));
+    expect(screen.getByText(/needs Phase 13/i)).toBeTruthy();
     expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
   });
 
@@ -145,6 +145,13 @@ describe('App shell', () => {
     await renderApp();
     await user.click(screen.getByRole('button', { name: /Manage Permissions/ }));
     expect(screen.getByRole('heading', { name: 'Privacy' })).toBeTruthy();
+  });
+
+  it('the plugins action opens Settings now that Phase 11 has shipped', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /^Plugins$/ }));
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
   });
 
   it('the security scan action acts now that Phase 9 has shipped', async () => {

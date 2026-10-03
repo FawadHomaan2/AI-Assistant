@@ -12,6 +12,7 @@ from jarvis.agents.executor import Executor
 from jarvis.agents.orchestrator import Orchestrator
 from jarvis.ai.gateway import Gateway
 from jarvis.browser.session import BrowserSession, BrowserSettings
+from jarvis.config import paths
 from jarvis.config.settings import Settings
 from jarvis.db.engine import Database
 from jarvis.db.repositories import AuditRepository, SessionRepository, TurnRepository
@@ -23,6 +24,7 @@ from jarvis.governance.policy import Policy
 from jarvis.memory.embeddings import best_available
 from jarvis.memory.store import MemoryStore
 from jarvis.platform_ import backends as os_backends
+from jarvis.plugins.host import PluginHost
 from jarvis.security.center import SecurityCenter
 from jarvis.tools.applications import ApplicationTool
 from jarvis.tools.browser import BrowserTool
@@ -31,6 +33,7 @@ from jarvis.tools.diagnostics_tool import DiagnosticsTool
 from jarvis.tools.documents import DocumentTool
 from jarvis.tools.filesystem import FileSystemTool
 from jarvis.tools.network import NetworkTool
+from jarvis.tools.plugin_proxy import register_plugins
 from jarvis.tools.powershell import PowerShellTool
 from jarvis.tools.processes import ProcessTool
 from jarvis.tools.registry import ToolRegistry
@@ -75,6 +78,7 @@ class Context:
     browser: BrowserSession
     memory: MemoryStore
     security: SecurityCenter
+    plugins: PluginHost
     version: str = VERSION
 
 
@@ -134,6 +138,14 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         registry.register(BrowserTool(browser))
         registry.register(WebSearchTool(browser, settings.browser.search_engine))
 
+    # Plugins are discovered, listed, and loaded only if already enabled.
+    # Discovery is not activation: installing something must never be the same
+    # act as running it.
+    plugins = PluginHost(db, paths.plugins_dir())
+    plugins.discover()
+    if loaded := register_plugins(registry, plugins, policy.grants):
+        log.info("plugin tools registered", count=loaded)
+
     executor = Executor(registry, policy, consent, audit, estop)
 
     # The strongest embedder this installation can actually run. Word matching
@@ -173,6 +185,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         browser=browser,
         memory=memory,
         security=security,
+        plugins=plugins,
     )
 
 
@@ -189,6 +202,8 @@ def create_app(ctx: Context) -> FastAPI:
         await ctx.gateway.aclose()
         # Chromium is a child process; leaving it running would outlive the core.
         await ctx.browser.close()
+        # Plugin processes are children; leaving them would outlive the core.
+        await ctx.plugins.stop_all()
         ctx.db.close()
         log.info("core stopped")
 

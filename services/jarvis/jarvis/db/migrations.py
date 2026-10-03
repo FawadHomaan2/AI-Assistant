@@ -181,10 +181,27 @@ CREATE TABLE posture (
 );
 """
 
+# Phase 11: installed plugins and what the user approved for each.
+_0005_PLUGINS = """
+CREATE TABLE plugins (
+    name          TEXT PRIMARY KEY,
+    version       TEXT NOT NULL,
+    -- Off until deliberately enabled. Installing something must never be the
+    -- same act as running it.
+    enabled       INTEGER NOT NULL DEFAULT 0,
+    manifest_json TEXT NOT NULL DEFAULT '{}',
+    -- The scopes approved at the time of enabling, kept separately from the
+    -- manifest so an update that asks for more is detectable.
+    scopes_json   TEXT NOT NULL DEFAULT '[]',
+    installed_at  TEXT NOT NULL
+);
+"""
+
 ALL: tuple[tuple[int, str], ...] = (
     (1, _0001_INITIAL),
     (2, _0002_MEMORY),
     (3, _0003_SECURITY),
     (4, _0004_GRANTS),
+    (5, _0005_PLUGINS),
 )
 LATEST = max(version for version, _ in ALL)

@@ -42,6 +42,10 @@ export function QuickActions() {
                   toggleVoice();
                   return;
                 }
+                if (ready && a.handler === 'settings') {
+                  setView('settings');
+                  return;
+                }
                 if (ready && a.handler === 'privacy') {
                   // Permissions are changed in a dedicated view, not by typing
                   // a request: an assistant should not be the one granting

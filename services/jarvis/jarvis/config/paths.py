@@ -49,6 +49,18 @@ def db_path() -> Path:
     return data_dir() / "jarvis.db"
 
 
+def plugins_dir() -> Path:
+    """Where installed plugins live.
+
+    Under the data directory rather than beside the executable: a plugin folder
+    the user can write to without administrator rights is a plugin folder an
+    installer-era attacker cannot silently add to.
+    """
+    if override := os.environ.get("JARVIS_PLUGINS_DIR"):
+        return Path(override)
+    return data_dir() / "plugins"
+
+
 def log_dir() -> Path:
     return data_dir() / "logs"
 

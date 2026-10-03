@@ -1,0 +1,23 @@
+{
+  "name": "word-count",
+  "version": "1.0.0",
+  "description": "Counts words, lines and characters in a piece of text, and reports the most common words.",
+  "author": "Jarvis reference plugin",
+  "entry": "main",
+  "tools": [
+    {
+      "name": "word_count",
+      "description": "Count the words, lines and characters in some text.",
+      "risk": "safe",
+      "scopes": [],
+      "inputSchema": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "top": { "type": "integer", "minimum": 1, "maximum": 20 }
+        }
+      }
+    }
+  ]
+}

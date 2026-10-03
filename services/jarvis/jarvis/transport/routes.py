@@ -12,7 +12,9 @@ from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer
 from jarvis.governance.risk import MODE_AUTO_CEILING
 from jarvis.governance.scopes import PATH_SCOPES, Scope
+from jarvis.plugins.manifest import ManifestInvalid
 from jarvis.tools.documents import DocumentTool
+from jarvis.tools.plugin_proxy import register_plugins
 from jarvis.transport import auth
 from jarvis.transport.schemas import (
     ChatRequest,
@@ -411,6 +413,68 @@ async def security_trust(request: Request, print_: str) -> dict[str, object]:
         )
     )
     return {"fingerprint": print_, "trusted": trusted}
+
+
+@router.get("/plugins")
+async def list_plugins(request: Request) -> dict[str, object]:
+    """Installed plugins, with what each may actually do.
+
+    `effectiveScopes` is the intersection the host enforces — declared,
+    approved, and held by Jarvis itself — so the interface shows what a plugin
+    can really do rather than what it asked for.
+    """
+    ctx = _ctx(request)
+    ctx.plugins.discover()
+    return {
+        "plugins": ctx.plugins.describe(ctx.policy.grants),
+        "directory": str(ctx.plugins.directory),
+        "isolation": (
+            "A plugin runs in its own process with no inherited credentials, but as "
+            "you, with your file access and your network. The scope system governs "
+            "what it can do through Jarvis, not what it can do on its own."
+        ),
+    }
+
+
+@router.post("/plugins/{name}/enable")
+async def enable_plugin(request: Request, name: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    try:
+        plugin = ctx.plugins.enable(name)
+    except ManifestInvalid as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    register_plugins(ctx.registry, ctx.plugins, ctx.policy.grants)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="plugin.enable",
+            args_digest=AuditRepository.digest(
+                {"plugin": name, "scopes": [s.value for s in plugin.approved_scopes]}
+            ),
+            decision="allowed",
+        )
+    )
+    enabled: dict[str, object] = plugin.to_dict(ctx.policy.grants)
+    return enabled
+
+
+@router.post("/plugins/{name}/disable")
+async def disable_plugin(request: Request, name: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    try:
+        plugin = await ctx.plugins.disable(name)
+    except ManifestInvalid as exc:
+        raise HTTPException(status_code=404, detail=exc.message) from exc
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="plugin.disable",
+            args_digest=AuditRepository.digest({"plugin": name}),
+            decision="allowed",
+        )
+    )
+    disabled: dict[str, object] = plugin.to_dict(ctx.policy.grants)
+    return disabled
 
 
 @router.get("/documents/formats")

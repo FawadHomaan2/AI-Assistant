@@ -33,10 +33,13 @@ export const PHASE = {
   security: 9,
   permissions: 10,
   plugins: 11,
+  packaging: 12,
+  /** Scheduled tasks and reminders are explicitly post-v1 (ARCHITECTURE §15). */
+  reminders: 13,
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 10;
+export const CURRENT_PHASE = 11;
 
 export interface QuickAction {
   id: string;
@@ -50,7 +53,7 @@ export interface QuickAction {
    */
   template?: string;
   /** A built-in handler, for actions that are not a chat message. */
-  handler?: 'voice' | 'privacy';
+  handler?: 'voice' | 'privacy' | 'settings';
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
@@ -118,12 +121,19 @@ export const QUICK_ACTIONS: QuickAction[] = [
     handler: 'privacy',
   },
   {
-    // Genuinely unbuilt. Listed so the capability is discoverable, and clicking
-    // it says which phase delivers it rather than doing nothing.
     id: 'plugins',
     label: 'Plugins',
     hint: 'Add capabilities from isolated, scoped plugins',
     availableIn: PHASE.plugins,
+    handler: 'settings',
+  },
+  {
+    // Honestly post-v1. Listed so the capability is discoverable, and clicking
+    // it says so rather than doing nothing.
+    id: 'reminders',
+    label: 'Set a Reminder',
+    hint: 'Be reminded of something later',
+    availableIn: PHASE.reminders,
   },
   {
     id: 'voice',

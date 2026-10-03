@@ -366,6 +366,35 @@ export function setPolicyMode(
   });
 }
 
+export interface PluginRow {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  enabled: boolean;
+  scopes: string[];
+  scopeDetail: { scope: string; description: string }[];
+  effectiveScopes: string[];
+  approvedScopes: string[];
+  needsReapproval: boolean;
+  maxRisk: string;
+  tools: { name: string; description: string; risk: string; scopes: string[] }[];
+  error: string;
+  running: boolean;
+}
+
+export function listPlugins(): Promise<
+  ApiResult<{ plugins: PluginRow[]; directory: string; isolation: string }>
+> {
+  return request('/plugins');
+}
+
+export function setPluginEnabled(name: string, enabled: boolean): Promise<ApiResult<PluginRow>> {
+  return request(`/plugins/${encodeURIComponent(name)}/${enabled ? 'enable' : 'disable'}`, {
+    method: 'POST',
+  });
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

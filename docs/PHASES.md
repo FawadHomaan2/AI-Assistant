@@ -553,12 +553,82 @@ browser host allowlist from the interface is in the same position.
 
 *Gate:* red-team the gate — no tool reachable without passing it — **met**.
 
-## Phase 11 — Plugins · next
-Manifest, process isolation, scoped tool proxy, enable/disable UI, one reference
-plugin.
-*Gate:* a plugin cannot exceed its declared scopes.
+## Phase 11 — Plugins · **done**
 
-## Phase 12 — Packaging · planned
+Shipped: a manifest format with strict validation, process isolation, a scoped
+tool proxy that goes through the ordinary gate, an enable/disable UI, and a
+working reference plugin in `plugins/word-count`.
+
+**A plugin's effective permissions are the intersection of three sets**: what
+its manifest declares, what the user approved when enabling it, and what Jarvis
+itself holds. The narrowest wins. The third is the one most easily forgotten
+and matters most — revoke `fs.read` from Jarvis and every plugin loses it too,
+because a plugin acting through Jarvis cannot reach further than Jarvis can.
+
+**The ceiling is re-derived on every call, never cached.** Preview and execute
+are separate calls, so a scope revoked between them bites. A plugin whose
+manifest changes to ask for more stops working until the user approves it
+again: the plugin they approved is not the plugin that is installed.
+
+**Scopes come from the manifest, never from the call.** `scopes_for` ignores
+its arguments entirely, because a plugin choosing its own permissions at call
+time is a plugin without permissions.
+
+**A plugin can never declare a critical tool.** Refused by the manifest
+validator and capped again at the proxy, so two separate places would have to
+be defeated. An unknown scope is refused rather than ignored — a permission the
+host does not understand is one it cannot enforce.
+
+**No ambient credentials.** The child process environment is built from an
+allowlist of seven variables rather than by removing known-secret names; a
+denylist leaks whatever nobody thought of, which over time is everything. A
+test sets `ANTHROPIC_API_KEY` and asserts a real plugin subprocess cannot see
+it.
+
+**Off by default.** Discovery is not activation: installing something must
+never be the same act as running it. A plugin with a broken manifest is listed
+with its reason rather than skipped, because skipping it silently leaves the
+user wondering why the thing they installed does nothing.
+
+**The isolation claim is stated honestly, in the interface.** This is a process
+boundary, not a sandbox: a plugin runs as you, with your file access and your
+network, and can read your documents without asking Jarvis. The scope system
+governs what it can do *through* Jarvis, which is a real boundary and not a
+substitute for trusting the author. The Settings card says exactly that above
+the enable button.
+
+**Verified on Linux (58 tests), with real subprocesses:** manifest validation
+including critical tools, unknown scopes, reserved names, path-shaped entry
+points; the environment allowlist proven against a plugin that prints its own
+environment; a hanging plugin killed on timeout; a crashing one reported with
+its own stderr; one returning junk, and one returning two megabytes; the
+reference plugin running, surviving its own errors, and being namespaced in the
+registry; and the ceiling tested from all three directions.
+
+Three real bugs were found while building it:
+
+  - `-I` isolates the interpreter so thoroughly that the plugin cannot import
+    *itself*. Replaced with `-s` plus an explicit `PYTHONPATH`, which is where
+    the real isolation was anyway.
+  - the name rules rejected two-character tool names like `go`, which are
+    perfectly reasonable.
+  - an oversized reply hit asyncio's own 64 KiB stream limit first and surfaced
+    "Separator is not found, and chunk exceed the limit" — true, and useless to
+    a user.
+
+Driven through the built interface against a live core: the plugin discovered
+and off, the Settings card showing what it asks for, enabling it registering
+`plugin.word-count.word_count` at safe risk with no scopes, the ceiling shown
+as declared/approved/effective, and disabling stopping the process.
+
+**Not built:** an OS-level sandbox. Proper confinement on Windows means
+AppContainer or a job object with a restricted token, which is a substantial
+piece of Windows work and is not attempted here. The interface says what the
+current boundary is rather than implying a stronger one.
+
+*Gate:* a plugin cannot exceed its declared scopes — **met**.
+
+## Phase 12 — Packaging · next
 PyInstaller sidecar, Tauri NSIS installer, shortcuts, uninstaller, autostart,
 first-run model fetcher, code signing, update channel.
 *Gate:* `AI-Assistant-Setup.exe` installs and runs on a clean Windows 10 and 11 VM.

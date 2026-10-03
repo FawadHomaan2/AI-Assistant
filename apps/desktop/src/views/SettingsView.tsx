@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useStore, CURRENT_PHASE } from '@/state/store';
 import { getShellInfo, hasShell, setGlobalShortcut } from '@/lib/bridge';
+import { listPlugins, setPluginEnabled, type PluginRow } from '@/lib/api';
 import './views.css';
 
 type Provider = 'local' | 'cloud' | 'custom';
@@ -22,6 +23,24 @@ export function SettingsView() {
   const requestConsent = useStore((s) => s.requestConsent);
   const providers = useStore((s) => s.providers);
   const core = useStore((s) => s.core);
+  const [plugins, setPlugins] = useState<PluginRow[] | null>(null);
+  const [pluginDir, setPluginDir] = useState('');
+
+  const loadPlugins = useCallback(async () => {
+    const res = await listPlugins();
+    if (!res.ok) {
+      // An empty list and an unreachable core look identical to a reader, so
+      // the failure is left visible rather than rendered as "none installed".
+      setPlugins([]);
+      return;
+    }
+    setPlugins(res.value.plugins);
+    setPluginDir(res.value.directory);
+  }, []);
+
+  useEffect(() => {
+    void loadPlugins();
+  }, [loadPlugins]);
 
   useEffect(() => {
     void getShellInfo().then((r) => {
@@ -230,6 +249,79 @@ export function SettingsView() {
             Preview a critical prompt
           </button>
         </div>
+      </Card>
+
+      <Card title="Plugins">
+        <p className="card__note">
+          Plugins add capabilities. Each runs in its own process with no
+          inherited credentials, and can only do what its manifest declares,
+          what you approve here, and what Jarvis itself is allowed to do —
+          whichever is narrowest. Nothing is enabled until you enable it.
+        </p>
+        <p className="card__note card__note--warn">
+          This is a process boundary, not a sandbox: a plugin runs as you, with
+          your file access and your network. Enable one only if you trust whoever
+          wrote it.
+        </p>
+        {plugins === null ? (
+          <p className="card__note">Asking the core…</p>
+        ) : plugins.length === 0 ? (
+          <p className="card__note">
+            No plugins installed. Drop a folder containing a <code>plugin.json</code>{' '}
+            into <code>{pluginDir || 'the plugins folder'}</code> and it will appear
+            here, switched off.
+          </p>
+        ) : (
+          <ul className="plugins">
+            {plugins.map((p) => (
+              <li key={p.name} className="plugin">
+                <div className="plugin__head">
+                  <strong className="plugin__name">{p.name}</strong>
+                  <span className="plugin__version">v{p.version}</span>
+                  <StatusBadge
+                    label={p.error ? 'Unusable' : p.enabled ? 'On' : 'Off'}
+                    kind={p.error ? 'failed' : p.enabled ? 'ok' : 'blocked'}
+                    tone={p.enabled && !p.error ? 'accent' : 'muted'}
+                  />
+                  {p.running && <StatusBadge label="Running" kind="pending" tone="muted" />}
+                </div>
+                <p className="plugin__desc">{p.error || p.description}</p>
+                <p className="plugin__scopes">
+                  {p.scopes.length === 0
+                    ? 'Needs no permissions.'
+                    : `Asks for: ${p.scopeDetail.map((d) => d.description).join(', ')}.`}
+                  {p.enabled && p.scopes.length > 0 && p.effectiveScopes.length < p.scopes.length && (
+                    <em> Jarvis does not hold all of these, so the plugin has fewer.</em>
+                  )}
+                </p>
+                {p.needsReapproval && (
+                  <p className="plugin__warn">
+                    This plugin now asks for more than you approved. It will not run
+                    until you enable it again.
+                  </p>
+                )}
+                {!p.error && (
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    onClick={async () => {
+                      await setPluginEnabled(p.name, !p.enabled);
+                      void loadPlugins();
+                    }}
+                  >
+                    {p.enabled
+                      ? 'Turn off'
+                      : p.scopes.length === 0
+                        ? 'Enable — it needs no permissions'
+                        : `Enable and allow ${p.scopes.length} permission${
+                            p.scopes.length === 1 ? '' : 's'
+                          }`}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card title="Build">

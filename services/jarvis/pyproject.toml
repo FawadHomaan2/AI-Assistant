@@ -52,7 +52,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106"]  # test fixtures use literal dummy tokens
+# Test fixtures describe what OTHER programs do — a dummy token, a socket bound
+# to every interface, a binary running from /tmp. Jarvis does none of those; it
+# detects them, and the detection needs the literal to test against.
+"tests/*" = ["S105", "S106", "S104", "S108"]
 
 [tool.mypy]
 python_version = "3.11"

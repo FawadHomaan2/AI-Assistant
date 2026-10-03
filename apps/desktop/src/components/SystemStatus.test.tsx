@@ -110,10 +110,13 @@ describe('SystemStatus', () => {
   });
 
   // A security panel must not imply a clean bill of health it never checked.
-  it('declares security monitoring unimplemented and claims no status', async () => {
+  it('claims no security status until something has actually been checked', async () => {
     getSystemSnapshot.mockResolvedValue(ok(snapshot()));
     render(<SystemStatus />);
-    expect(await screen.findByText(/Security monitoring is not implemented yet/i)).toBeTruthy();
+    expect(await screen.findByText(/nothing has been checked in this/i)).toBeTruthy();
+    // The panel must never reassure. "Not checked" is the only honest state
+    // before a scan, and a green tick here would be read as a verdict.
+    expect(screen.getByText('Not checked')).toBeTruthy();
     expect(screen.queryByText(/protected|secure|all clear/i)).toBeNull();
   });
 });

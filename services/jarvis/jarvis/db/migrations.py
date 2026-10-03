@@ -108,5 +108,54 @@ CREATE TABLE memory_vec (
 );
 """
 
-ALL: tuple[tuple[int, str], ...] = ((1, _0001_INITIAL), (2, _0002_MEMORY))
+# Phase 9: the Security Center.
+_0003_SECURITY = """
+CREATE TABLE security_findings (
+    id             TEXT PRIMARY KEY,
+    detected_at    TEXT NOT NULL,
+    category       TEXT NOT NULL,
+    severity       TEXT NOT NULL
+                   CHECK (severity IN ('info','low','medium','high','critical')),
+    -- The honesty rule, enforced by the schema rather than by prompt wording:
+    -- there is no value here that means "probably malware". Something Jarvis
+    -- has not seen before is 'normal_activity' with a note, never an accusation.
+    classification TEXT NOT NULL
+                   CHECK (classification IN ('confirmed_event','suspicious_behavior',
+                                             'potential_risk','normal_activity')),
+    title          TEXT NOT NULL,
+    evidence_json  TEXT NOT NULL DEFAULT '{}',
+    explanation    TEXT NOT NULL DEFAULT '',
+    remediation    TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'open'
+                   CHECK (status IN ('open','acknowledged','resolved')),
+    acknowledged_at TEXT,
+    -- Stable across scans, so the same condition updates one row instead of
+    -- producing a new alert every time the check runs.
+    fingerprint    TEXT NOT NULL UNIQUE,
+    first_seen     TEXT NOT NULL,
+    last_seen      TEXT NOT NULL,
+    seen_count     INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_findings_status ON security_findings(status, severity);
+
+-- What this machine normally looks like. Without it, every scan reports the
+-- same startup programs as discoveries, and the user learns to ignore them.
+CREATE TABLE security_baseline (
+    fingerprint TEXT PRIMARY KEY,
+    category    TEXT NOT NULL,
+    label       TEXT NOT NULL DEFAULT '',
+    first_seen  TEXT NOT NULL,
+    last_seen   TEXT NOT NULL,
+    seen_count  INTEGER NOT NULL DEFAULT 1,
+    -- The user said this one is fine. Distinct from merely familiar.
+    trusted     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_baseline_category ON security_baseline(category);
+"""
+
+ALL: tuple[tuple[int, str], ...] = (
+    (1, _0001_INITIAL),
+    (2, _0002_MEMORY),
+    (3, _0003_SECURITY),
+)
 LATEST = max(version for version, _ in ALL)

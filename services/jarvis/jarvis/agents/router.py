@@ -134,6 +134,12 @@ _SECURITY = (
     "encrypted",
     "bitlocker",
     "phishing",
+    "listening on",
+    "what is listening",
+    "what's listening",
+    "whats listening",
+    "open ports",
+    "open port",
 )
 
 #: Questions about what is running. A substring list is too brittle for the

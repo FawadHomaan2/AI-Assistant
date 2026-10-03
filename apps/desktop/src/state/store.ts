@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 8;
+export const CURRENT_PHASE = 9;
 
 export interface QuickAction {
   id: string;
@@ -82,7 +82,13 @@ export const QUICK_ACTIONS: QuickAction[] = [
     availableIn: PHASE.systemTools,
     template: 'take a screenshot',
   },
-  { id: 'security-scan', label: 'Security Scan', hint: 'Check Defender, firewall, startup items', availableIn: PHASE.security },
+  {
+    id: 'security-scan',
+    label: 'Security Scan',
+    hint: 'Check antivirus, firewall, encryption, startup programs and network listeners',
+    availableIn: PHASE.security,
+    template: 'check my security',
+  },
   {
     id: 'system-check',
     label: 'System Check',
@@ -103,6 +109,15 @@ export const QUICK_ACTIONS: QuickAction[] = [
     hint: 'Search the web and read the results',
     availableIn: PHASE.browser,
     template: 'search the web for ',
+  },
+  {
+    // Genuinely gated: the scope-grant UI arrives with the permission system.
+    // Listed anyway so the capability is discoverable, and clicking it says
+    // which phase delivers it rather than doing nothing.
+    id: 'permissions',
+    label: 'Manage Permissions',
+    hint: 'Grant and revoke what Jarvis is allowed to do',
+    availableIn: PHASE.permissions,
   },
   {
     id: 'voice',

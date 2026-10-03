@@ -144,6 +144,25 @@ _CONNECTIVITY = re.compile(
     re.IGNORECASE,
 )
 
+#: "check my security", "is my firewall on", "scan for viruses", "am I safe".
+_SECURITY_SCAN = re.compile(
+    r"\b(?:"
+    r"(?:check|scan|run|review|audit)\s+(?:my\s+|the\s+|a\s+)?"
+    r"(?:security|antivirus|defender|firewall|protection|system)"
+    r"|security\s+(?:scan|check|audit|status|report)"
+    r"|(?:is|are)\s+(?:my|this)\b.{0,20}?\b(?:secure|safe|protected|encrypted)"
+    r"|am\s+i\s+(?:safe|secure|protected)"
+    r"|(?:viruse?s?|malware|antivirus|defender|firewall|bitlocker|startup programs?)\b"
+    r"|what(?:'s| is)\s+listening"
+    r"|open\s+ports?"
+    # The planner only sees this once the router has classified the message as
+    # a security question, so a bare mention of the word is safe here. It is
+    # not safe in the router, where "what is a firewall" is a conversation.
+    r"|\bsecurity\b"
+    r")",
+    re.IGNORECASE,
+)
+
 #: "take a screenshot".
 _SCREENSHOT = re.compile(
     r"\b(?:take|grab|capture|get)\s+(?:a\s+)?screen\s?shot|\bscreenshot\b", re.IGNORECASE
@@ -219,13 +238,9 @@ _READ_PATH = re.compile(
 #: name the right missing capability instead of talking about folders.
 _OTHER_DOMAINS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
-        re.compile(
-            r"\b(drivers?|startup programs|startup apps|startup items|windows update)\b",
-            re.IGNORECASE,
-        ),
-        "Driver, startup-item and Windows Update checks arrive with the Security "
-        "Center in Phase 9. I can already measure CPU, memory, disks and uptime, "
-        "and tell you what is running.",
+        re.compile(r"\b(drivers?|device manager)\b", re.IGNORECASE),
+        "Driver inspection is not built. I can check security posture, measure "
+        "CPU, memory, disks and uptime, and tell you what is running.",
     ),
     (
         re.compile(r"\b(wi-?fi|bluetooth|volume|brightness|turn (on|off))\b", re.IGNORECASE),
@@ -335,6 +350,20 @@ def plan(message: str) -> Plan:
         if re.search(r"\blast month\b|\brecent(ly)?\b|\bthis week\b", text, re.IGNORECASE):
             args["modified_within_days"] = 31
         return Plan([Step("filesystem", args, f"search {folder} for {pattern}")])
+
+    # Security before diagnostics: "is my computer safe" is not a performance
+    # question, and before the launch branch so "scan for viruses" is not read
+    # as "launch an application called viruses".
+    if _SECURITY_SCAN.search(text):
+        return Plan(
+            [
+                Step(
+                    "security",
+                    {"operation": "scan"},
+                    "check antivirus, firewall, encryption, startup, network and devices",
+                )
+            ]
+        )
 
     if _SLOW.search(text):
         return Plan(

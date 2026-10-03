@@ -60,7 +60,7 @@ class TestDeclining:
         ("message", "phase_text"),
         [
             ("turn off bluetooth", "not built yet"),
-            ("check my startup programs", "Phase 9"),
+            ("show me the device manager", "not built"),
         ],
     )
     def test_other_domains_name_the_right_missing_capability(
@@ -164,11 +164,11 @@ class TestApplicationsAndWindows:
     def test_screenshots_map_to_the_capture_tool(self) -> None:
         assert plan("take a screenshot").steps[0].tool == "screenshot"
 
-    def test_driver_and_startup_checks_still_name_phase_9(self) -> None:
-        """Those land with the Security Center, and the reply says so."""
+    def test_startup_checks_now_run_rather_than_naming_a_phase(self) -> None:
+        """Phase 9 shipped them, so the deferral message must be gone."""
         result = plan("check my startup programs")
-        assert result.steps == []
-        assert "Phase 9" in result.unsupported
+        assert result.steps and result.steps[0].tool == "security"
+        assert result.unsupported == ""
 
 
 class TestWeb:

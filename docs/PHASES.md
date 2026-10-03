@@ -401,13 +401,82 @@ it yet — that needs the model-driven planner, not a rule-based one.
 
 *Gate:* a preference stated once is recalled in a later session — **met**.
 
-## Phase 9 — Security Center · next
-Defender, firewall, startup items, network connections, USB history, updates,
-BitLocker, event log; baseline learning; four-level classification.
-*Gate:* findings carry evidence and the correct classification — unfamiliar is
-reported as unfamiliar, never as malware.
+## Phase 9 — Security Center · **done**
 
-## Phase 10 — Permissions · planned
+Shipped: seven checks (antivirus, firewall, disk encryption, updates, startup
+programs, network listeners, removable devices), baseline learning, four-level
+classification, a findings store that deduplicates across scans, and a panel
+that shows what was checked as prominently as what was found.
+
+**It reads and never writes.** There is no code path in the Security Center
+that turns Defender on, enables the firewall or encrypts a drive — on any
+platform. That is a design decision, not an unfinished one: an assistant that
+can change security controls is a far more valuable thing to compromise than
+one that can only describe them. A test asserts the Windows collector contains
+no `Set-`, `Remove-`, `Disable-` or `Enable-` cmdlet, and another asserts no
+API route looks like a remediation.
+
+**Unfamiliar is reported as unfamiliar.** Novelty alone produces
+`normal_activity` with a sentence saying it is new and explicitly that this is
+not evidence of a problem. Only a *named* risky pattern produces
+`suspicious_behavior`, and the pattern's name is written into the evidence so
+the claim can be argued with. The classification column is constrained in the
+schema — there is no value meaning "probably malware" — so the rule is enforced
+by the database rather than by prompt wording.
+
+**Severity cannot outrun classification.** A `normal_activity` finding is
+capped at informational and a `potential_risk` never reaches critical, which
+closes the back door of "it is new, so call it critical" after `classify`
+refused it the front one.
+
+**A check that could not run says so, and the headline counts it.** "5 of 7
+checks ran" is always shown, and the unavailable ones get their own card with
+the reason for each. "Everything looks fine" after a third of the checks
+failed is the single most dangerous thing a security panel can say, so the one
+case where nothing could be checked produces "Jarvis has no idea what its
+security posture is" rather than silence.
+
+**Familiar is not trusted.** Being in the baseline means "seen before". A
+malicious startup entry that predates Jarvis becomes familiar, not safe, and
+`trusted` is set only when the user says so. The consent text for trusting
+something says plainly that it makes Jarvis quiet about it, not that it makes
+it safe.
+
+**One condition is one row.** Findings deduplicate on a fingerprint across
+scans, a fixed condition is resolved and stops being reported, and one that
+comes back reopens. A growing wall of identical alerts is how a user learns to
+stop reading them.
+
+**Verified on Linux (71 tests):** every classification rule, including the five
+ways novelty must not raise a claim; severity capping; baseline vs trusted;
+checks that cannot run; a broken check never stopping the others; findings
+dedupe, resolve and reopen; the schema refusing an invented classification; and
+the real POSIX collectors reading real startup items, real listeners and real
+block devices. A regression test covers `::1` having been treated as externally
+reachable.
+
+Also driven through the built interface against a live core: the panel shows no
+status before a scan, then "5 of 7 checks ran", the two unavailable checks with
+their reasons, one `potential_risk` finding with its evidence and remediation,
+and four normal findings listed so the user can see what was actually looked
+at. The same question asked in chat routes to the same tool.
+
+**Needs Windows to verify:** the Defender, firewall-profile, BitLocker,
+hotfix, `Win32_StartupCommand` and USB-device collectors all call PowerShell
+cmdlets that cannot execute in this project's Linux CI. Their *shapes* are
+handled by the checks and tested with a fake collector; the cmdlets themselves
+are unverified. The POSIX equivalents (ufw/nftables, LUKS via lsblk, XDG
+autostart and systemd user units, psutil listeners, removable block devices)
+are real and are what the tests exercise.
+
+**Not wired:** the Windows event log (failed logons need admin plus an audit
+policy), browser extensions, and recently-installed-application tracking. They
+are listed in ARCHITECTURE §16 as needing privileges Jarvis does not ask for.
+
+*Gate:* findings carry evidence and the correct classification; unfamiliar is
+reported as unfamiliar, never as malware — **met**.
+
+## Phase 10 — Permissions · next
 Full risk × scope × mode matrix, scope-grant UI, typed-phrase tier-5 confirm,
 read-only mode, rate limits.
 *Gate:* red-team the gate — no tool reachable without passing it.

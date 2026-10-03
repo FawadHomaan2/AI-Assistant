@@ -247,6 +247,64 @@ export function memoryEdit(
   });
 }
 
+export interface SecurityFinding {
+  id: string;
+  category: string;
+  title: string;
+  classification: 'confirmed_event' | 'suspicious_behavior' | 'potential_risk' | 'normal_activity';
+  classificationLabel: string;
+  classificationMeaning: string;
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  explanation: string;
+  evidence: Record<string, unknown>;
+  remediation: string;
+  novel: boolean;
+  fingerprint: string;
+  actionable: boolean;
+}
+
+export interface SecurityCheck {
+  category: string;
+  name: string;
+  ran: boolean;
+  summary: string;
+  unavailableReason: string;
+  findings: SecurityFinding[];
+}
+
+export interface SecurityScan {
+  startedAt: string;
+  elapsedMs: number;
+  firstScan: boolean;
+  headline: string;
+  checks: SecurityCheck[];
+  findings: SecurityFinding[];
+  actionable: SecurityFinding[];
+  unavailable: { name: string; category: string; reason: string }[];
+  checksRun: number;
+  checksTotal: number;
+}
+
+export interface SecurityStatus {
+  lastScan: SecurityScan | null;
+  openFindings: number;
+  baselineItems: number;
+  baselineEstablished: boolean;
+  collector: string;
+}
+
+export function securityStatus(): Promise<ApiResult<SecurityStatus>> {
+  return request('/security/status');
+}
+
+export function securityScan(): Promise<ApiResult<SecurityScan>> {
+  return request('/security/scan', { method: 'POST' });
+}
+
+export function securityAcknowledge(id: string): Promise<ApiResult<{ acknowledged: string }>> {
+  return request(`/security/findings/${encodeURIComponent(id)}/acknowledge`, { method: 'POST' });
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

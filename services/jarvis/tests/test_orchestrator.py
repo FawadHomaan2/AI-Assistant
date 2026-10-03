@@ -50,14 +50,19 @@ async def test_unmappable_file_request_says_so_rather_than_guessing(ctx) -> None
     assert "can't yet work out the exact steps" in notice.data["message"]
 
 
-async def test_security_request_claims_no_status(ctx) -> None:
+async def test_security_request_is_measured_and_claims_no_more(ctx) -> None:
+    """Since Phase 9 this is checked rather than deferred — and still never overstated."""
     _, events = await _run(ctx, "check my computer's security")
-    notice = next(e for e in events if e.type is EventType.NOTICE)
-    assert notice.data["available_in_phase"] == 9
-    text = notice.data["message"].lower()
-    assert "won't report a status i haven't actually measured" in text
-    for claim in ("you are protected", "no threats", "all clear", "looks clean"):
+    result = next((e for e in events if e.type is EventType.TOOL_RESULT), None)
+    assert result is not None, f"no tool ran; got {[e.type.value for e in events]}"
+    data = result.data["data"]
+    assert data["checksTotal"] >= 7
+    # However it turns out, the reply never pronounces the machine safe.
+    text = (result.data["summary"] + " " + data["headline"]).lower()
+    for claim in ("you are protected", "no threats", "all clear", "looks clean", "malware"):
         assert claim not in text
+    # And it always says how many checks actually ran.
+    assert data["checksRun"] <= data["checksTotal"]
 
 
 async def test_diagnostics_run_rather_than_being_deferred(ctx) -> None:
@@ -67,7 +72,8 @@ async def test_diagnostics_run_rather_than_being_deferred(ctx) -> None:
     assert EventType.DELTA not in kinds, "diagnosis must not be left to the model"
     assert EventType.TOOL_RESULT in kinds
 
-    result = next(e for e in events if e.type is EventType.TOOL_RESULT)
+    result = next((e for e in events if e.type is EventType.TOOL_RESULT), None)
+    assert result is not None, f"no tool ran; got {[e.type.value for e in events]}"
     assert result.data["data"]["findings"], "every answer must carry measured findings"
     for finding in result.data["data"]["findings"]:
         assert finding["evidence"], finding["title"]

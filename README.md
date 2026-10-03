@@ -6,12 +6,12 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 8 of 12 — it remembers you now.**
+> **Current state: Phase 9 of 12 — the Security Center works.**
 > Jarvis works with your files, reads documents, starts installed programs,
 > manages windows, reports what is running, diagnoses why the machine is slow
 > by measuring it, browses the web — navigating, reading pages, and filling in
-> forms behind a confirmation gate — and remembers preferences you state,
-> recalling them in later conversations.
+> forms behind a confirmation gate, remembers preferences you state and recalls
+> them in later conversations, and checks this machine's security posture.
 > Every action goes through a path jail, a policy engine and a confirmation
 > gate, and lands in a tamper-evident audit log.
 >
@@ -19,6 +19,10 @@ Say **"Jarvis"** — or press `Ctrl+Space`.
 > visit hosts on an allowlist — so a page that tells the model to go somewhere
 > else and paste what it just read is refused by the gate rather than by the
 > model's good judgement.
+>
+> The Security Center **reads and never writes** — it cannot turn Defender or
+> the firewall on or off — and something it has not seen before is reported as
+> unfamiliar, never as malware. It always says how many checks actually ran.
 >
 > Memory only acts on things you **stated**, or that it has observed three
 > times consistently. Everything it believes is listed, searchable and

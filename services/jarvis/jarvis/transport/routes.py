@@ -268,6 +268,77 @@ async def memory_clear(request: Request, tier: str = "") -> dict[str, object]:
     return {"deleted": removed, "tier": tier or "all"}
 
 
+@router.get("/security/status")
+async def security_status(request: Request) -> dict[str, object]:
+    """Posture without rescanning, for the panel's first paint."""
+    status: dict[str, object] = _ctx(request).security.status()
+    return status
+
+
+@router.post("/security/scan")
+async def security_scan(request: Request) -> dict[str, object]:
+    ctx = _ctx(request)
+    report = ctx.security.scan()
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="security.scan",
+            args_digest=AuditRepository.digest(
+                {"checks": report.to_dict()["checksTotal"], "findings": len(report.actionable)}
+            ),
+            decision="allowed",
+        )
+    )
+    body: dict[str, object] = report.to_dict()
+    return body
+
+
+@router.get("/security/findings")
+async def security_findings(request: Request) -> dict[str, object]:
+    return {"findings": _ctx(request).security.findings.open_findings()}
+
+
+@router.post("/security/findings/{finding_id}/acknowledge")
+async def security_acknowledge(request: Request, finding_id: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    if not ctx.security.findings.acknowledge(finding_id):
+        raise HTTPException(status_code=404, detail=f"No finding with id {finding_id!r}.")
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="security.acknowledge",
+            args_digest=AuditRepository.digest({"id": finding_id}),
+            decision="allowed",
+        )
+    )
+    return {"acknowledged": finding_id}
+
+
+@router.get("/security/baseline")
+async def security_baseline(request: Request, category: str = "") -> dict[str, object]:
+    entries = _ctx(request).security.baseline.entries(category)
+    return {"baseline": [e.to_dict() for e in entries]}
+
+
+@router.post("/security/baseline/{print_}/trust")
+async def security_trust(request: Request, print_: str) -> dict[str, object]:
+    """Stop reporting something. Trusting it does not make it safe."""
+    ctx = _ctx(request)
+    body = await request.json() if await request.body() else {}
+    trusted = bool(body.get("trusted", True))
+    if not ctx.security.baseline.trust(print_, trusted):
+        raise HTTPException(status_code=404, detail=f"Nothing in the baseline matches {print_!r}.")
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="security.trust",
+            args_digest=AuditRepository.digest({"fingerprint": print_, "trusted": trusted}),
+            decision="allowed",
+        )
+    )
+    return {"fingerprint": print_, "trusted": trusted}
+
+
 @router.get("/documents/formats")
 async def document_formats(request: Request) -> list[dict[str, object]]:
     del request

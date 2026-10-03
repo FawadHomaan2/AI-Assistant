@@ -133,9 +133,17 @@ describe('App shell', () => {
   it('a gated quick action names the phase it needs rather than acting', async () => {
     const user = userEvent.setup();
     await renderApp();
-    await user.click(screen.getByRole('button', { name: /Security Scan/ }));
-    expect(screen.getByText(/needs Phase 9/i)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Manage Permissions/ }));
+    expect(screen.getByText(/needs Phase 10/i)).toBeTruthy();
     expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+  });
+
+  it('the security scan action acts now that Phase 9 has shipped', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /Security Scan/ }));
+    const input = screen.getByLabelText('Message Jarvis') as HTMLTextAreaElement;
+    expect(input.value).toBe('check my security');
   });
 
   it('an available quick action pre-fills the composer', async () => {
@@ -161,7 +169,20 @@ describe('App shell', () => {
     const user = userEvent.setup();
     await renderApp();
     await user.click(screen.getByRole('button', { name: 'Security' }));
-    expect(screen.getByText(/Not implemented — Phase 9/)).toBeTruthy();
+    // Before a scan there is no status at all — not a reassuring green tick.
+    expect(screen.getByText(/Nothing has been checked yet/)).toBeTruthy();
     expect(screen.queryByText(/you are protected|no threats found/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /run a security check/i })).toBeTruthy();
+  });
+
+  it('the security view explains the four levels before showing any', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: 'Security' }));
+    for (const level of [/confirmed event/i, /suspicious behaviour/i, /potential risk/i, /normal activity/i]) {
+      expect(screen.getByText(level)).toBeTruthy();
+    }
+    // The sentence that keeps "unfamiliar" from being heard as "virus".
+    expect(screen.getByText(/not as a virus/i)).toBeTruthy();
   });
 });

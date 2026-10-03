@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Icon, type IconName } from './Icon';
 import { StatusBadge } from './StatusBadge';
-import { useStore, PHASE } from '@/state/store';
+import { useStore } from '@/state/store';
 import type { Unavailable } from '@/types';
 import './SystemStatus.css';
 
@@ -189,15 +189,16 @@ export function SystemStatus() {
           <Icon name="shield" size={13} /> Security
         </span>
         <StatusBadge
-          label={`Phase ${PHASE.security}`}
-          kind="blocked"
+          label="Not checked"
+          kind="pending"
           tone="muted"
-          title="Defender, firewall, startup and network checks are not implemented in this build"
+          title="Jarvis has not run a security check in this session"
         />
       </div>
       <p className="status__note status__note--tight">
-        Security monitoring is not implemented yet. This panel will not show a
-        status until the checks behind it are real.
+        This panel shows no status because nothing has been checked in this
+        session. Open the Security Center to run the checks — Jarvis will not
+        show a posture it has not measured.
       </p>
     </section>
   );

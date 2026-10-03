@@ -23,6 +23,7 @@ from jarvis.governance.scopes import ScopeGrants
 from jarvis.memory.embeddings import best_available
 from jarvis.memory.store import MemoryStore
 from jarvis.platform_ import backends as os_backends
+from jarvis.security.center import SecurityCenter
 from jarvis.tools.applications import ApplicationTool
 from jarvis.tools.browser import BrowserTool
 from jarvis.tools.capture import ClipboardTool, NotificationTool, ScreenshotTool
@@ -33,6 +34,7 @@ from jarvis.tools.network import NetworkTool
 from jarvis.tools.powershell import PowerShellTool
 from jarvis.tools.processes import ProcessTool
 from jarvis.tools.registry import ToolRegistry
+from jarvis.tools.security_tool import SecurityTool
 from jarvis.tools.systeminfo import SystemInfoTool
 from jarvis.tools.websearch import WebSearchTool
 from jarvis.tools.windows_tool import WindowTool
@@ -71,6 +73,7 @@ class Context:
     voice: VoicePipeline
     browser: BrowserSession
     memory: MemoryStore
+    security: SecurityCenter
     version: str = VERSION
 
 
@@ -101,6 +104,10 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         )
     )
 
+    # Read-only by construction: the center has no code path that changes a
+    # security setting, on any platform.
+    security = SecurityCenter(db)
+
     adapters = os_backends()
     registry = ToolRegistry()
     registry.register(FileSystemTool(jail))
@@ -115,6 +122,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     registry.register(ClipboardTool())
     registry.register(NotificationTool())
     registry.register(PowerShellTool())
+    registry.register(SecurityTool(security))
     if settings.browser.enabled:
         registry.register(BrowserTool(browser))
         registry.register(WebSearchTool(browser, settings.browser.search_engine))
@@ -156,6 +164,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         voice=voice,
         browser=browser,
         memory=memory,
+        security=security,
     )
 
 

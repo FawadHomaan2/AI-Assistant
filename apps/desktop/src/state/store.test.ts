@@ -308,8 +308,8 @@ describe('store: voice', () => {
 describe('phase gating', () => {
   beforeEach(reset);
 
-  it('shipped phase matches the memory phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.memory);
+  it('shipped phase matches the security phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.security);
   });
 
   // An action that claims to be available must have something behind it.

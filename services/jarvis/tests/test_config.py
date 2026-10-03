@@ -6,7 +6,7 @@ from jarvis.config.settings import ProviderSettings, ServerSettings, Settings, l
 from jarvis.util.errors import ConfigError
 
 
-@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.5", "example.com"])  # noqa: S104
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.5", "example.com"])
 def test_non_loopback_bind_is_refused(host: str) -> None:
     """The API drives the computer; it is never exposed off-host."""
     with pytest.raises(ValueError, match="loopback"):

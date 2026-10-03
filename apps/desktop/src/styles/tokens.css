@@ -1,0 +1,137 @@
+/*
+ * Juno design tokens.
+ *
+ * Palette is deliberately two-colour: brown (surface) + marigold (accent),
+ * plus light-brown tints and white text. There are NO status colours — state is
+ * carried by icon, label, weight and accent opacity instead of hue. That is a
+ * hard constraint, so every component must read state from text/icon, never
+ * from colour alone (which is also better for accessibility).
+ */
+:root {
+  /* Core */
+  --brown: #241c17;
+  --marigold: #e7a325;
+
+  /* Light-brown tints */
+  --tint-100: #faf8f4;
+  --tint-200: #e4d8c6;
+  --tint-300: #c9bca8;
+
+  /* Derived brown steps (same hue family, used for depth) */
+  --brown-900: #140f0c;
+  --brown-800: #1b1512;
+  --brown-700: #241c17;
+  --brown-600: #2f2620;
+  --brown-500: #3d322a;
+  --brown-400: #4e4036;
+
+  /* Semantic surfaces — dark is the default posture for an all-day tray app */
+  --bg: var(--brown-900);
+  --surface: var(--brown-800);
+  --surface-raised: var(--brown-700);
+  --surface-sunken: var(--brown-900);
+  --border: var(--brown-500);
+  --border-strong: var(--brown-400);
+
+  /* Text */
+  --text: #ffffff;
+  --text-muted: var(--tint-300);
+  --text-subtle: #8f8274;
+  --text-on-accent: var(--brown-900);
+
+  /* Accent roles */
+  --accent: var(--marigold);
+  --accent-dim: rgba(231, 163, 37, 0.5);
+  --accent-ghost: rgba(231, 163, 37, 0.14);
+  --accent-ghost-strong: rgba(231, 163, 37, 0.26);
+
+  /* Typography */
+  --font-ui: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+
+  /* Space & shape */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --focus-ring: 0 0 0 2px var(--brown-900), 0 0 0 4px var(--accent);
+
+  --sidebar-w: 212px;
+  --rail-w: 300px;
+}
+
+/* Light theme: the same two colours, inverted surfaces. */
+:root[data-theme="light"] {
+  --bg: var(--tint-100);
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: var(--tint-100);
+  --border: var(--tint-200);
+  --border-strong: var(--tint-300);
+  --text: var(--brown-900);
+  --text-muted: #6b5e52;
+  --text-subtle: #8f8274;
+  --shadow: 0 8px 28px rgba(36, 28, 23, 0.14);
+  --shadow-sm: 0 2px 8px rgba(36, 28, 23, 0.1);
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* An automation tool should not let stray drag-selects fire actions. */
+  user-select: none;
+}
+
+input, textarea, [data-selectable] { user-select: text; }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--tint-300); background-clip: content-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

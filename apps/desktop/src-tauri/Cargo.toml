@@ -1,0 +1,38 @@
+[package]
+name = "juno"
+version = "0.1.0"
+description = "Juno — personal AI computer assistant"
+authors = ["Juno"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "juno_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.32"
+starship-battery = "0.10"
+log = "0.4"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+
+[profile.release]
+# Smaller binary, and a tray-resident app benefits more from size than from
+# aggressive inlining.
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

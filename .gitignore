@@ -1,0 +1,45 @@
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Rust / Tauri
+target/
+apps/desktop/src-tauri/gen/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local config & secrets — never commit these
+.env
+.env.*
+config.local.toml
+*.pem
+*.pfx
+
+# AI models: downloaded on first run, never committed
+models/
+*.gguf
+*.onnx
+*.bin
+
+# Runtime data
+*.db
+*.db-wal
+*.db-shm
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

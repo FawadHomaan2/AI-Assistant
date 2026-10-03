@@ -1,0 +1,51 @@
+.quick {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.quick__head h2 {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+.quick__grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+
+.quick__btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+.quick__btn:hover { border-color: var(--accent-dim); color: var(--accent); background: var(--accent-ghost); }
+.quick__label { font-size: var(--fs-sm); font-weight: 600; line-height: 1.2; }
+
+/* Dashed border = capability not present yet. Consistent with the voice button. */
+.quick__btn.is-pending { border-style: dashed; color: var(--text-subtle); }
+.quick__phase {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-ghost);
+  color: var(--accent);
+}

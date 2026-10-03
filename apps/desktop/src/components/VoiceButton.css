@@ -1,0 +1,39 @@
+.voicebtn {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.voicebtn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-dim); }
+.voicebtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Not installed: dashed edge signals "absent", not "broken". */
+.voicebtn--unavailable { border-style: dashed; }
+
+.voicebtn--recording,
+.voicebtn--listening {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+.voicebtn--speaking { color: var(--accent); border-color: var(--accent); }
+
+.voicebtn__pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid var(--accent);
+  animation: voice-pulse 1.6s ease-out infinite;
+}
+@keyframes voice-pulse {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  100% { transform: scale(1.25); opacity: 0; }
+}

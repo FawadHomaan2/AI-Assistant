@@ -1,0 +1,108 @@
+/**
+ * Shared frontend types.
+ *
+ * In Phase 2 the tool/plan types here get generated from the JSON Schemas in
+ * `packages/shared` so the Python core and this UI cannot drift. For Phase 1
+ * they are hand-written and intentionally narrow.
+ */
+
+/** Risk tiers from ARCHITECTURE.md §7. Drives consent behaviour. */
+export type RiskTier = 'safe' | 'low' | 'medium' | 'high' | 'critical';
+
+/** Global operating posture (§7, axis 3). */
+export type AssistantMode = 'paused' | 'guarded' | 'assisted' | 'developer';
+
+/** Where a message came from / what it represents. */
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
+
+/** Lifecycle of an assistant turn or tool action. */
+export type ActionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked';
+
+export interface ChatMessage {
+  id: string;
+  role: MessageRole;
+  /** Plain text body. Markdown rendering arrives with the AI core in Phase 2. */
+  content: string;
+  createdAt: number;
+  /** Set when this message reports a tool action rather than prose. */
+  tool?: { name: string; status: ActionStatus; risk: RiskTier; detail?: string };
+  /**
+   * Marks a message as an explicit capability notice (e.g. "needs Phase 2").
+   * Rendered distinctly so an unimplemented feature is never mistaken for a
+   * working answer.
+   */
+  notice?: boolean;
+}
+
+export interface ActivityEntry {
+  id: string;
+  at: number;
+  /** Short verb phrase, e.g. "Opened Chrome". */
+  summary: string;
+  status: ActionStatus;
+  tool?: string;
+  /** Which rung of the control ladder was used (§10). Absent until Phase 4. */
+  controlLayer?: 'L1' | 'L2' | 'L3' | 'L4';
+  detail?: string;
+}
+
+/** A pending confirmation request from the governance plane (§7). */
+export interface ConsentRequest {
+  id: string;
+  title: string;
+  /** One-sentence plain-language description of the effect. */
+  summary: string;
+  risk: RiskTier;
+  /** What originated this — the user's request plus the plan step. */
+  origin: string;
+  /** Exact objects affected, e.g. full paths. Shown under "Review details". */
+  targets: string[];
+  /** Total affected count; may exceed targets.length when truncated. */
+  affectedCount: number;
+  reversible: 'recycle-bin' | 'undoable' | 'permanent' | 'unknown';
+  /** Largest thing that changes if this proceeds. */
+  blastRadius: string;
+  /** Tier 4-5 require typing this phrase before Confirm enables. */
+  confirmPhrase?: string;
+  /** Scoped-remember is never offered above tier 3. */
+  allowRemember: boolean;
+}
+
+export type ConsentDecision =
+  | { decision: 'confirm'; remember: 'no' | 'session' | 'always' }
+  | { decision: 'cancel' };
+
+/**
+ * Live machine metrics. Every field is nullable because "we could not read this"
+ * must be representable — we never substitute a placeholder number.
+ */
+export interface SystemSnapshot {
+  cpuPercent: number | null;
+  memUsedBytes: number | null;
+  memTotalBytes: number | null;
+  diskUsedBytes: number | null;
+  diskTotalBytes: number | null;
+  /** Cumulative since boot; deltas are computed in the UI. */
+  netRxBytes: number | null;
+  netTxBytes: number | null;
+  batteryPercent: number | null;
+  batteryCharging: boolean | null;
+  processCount: number | null;
+  hostname: string | null;
+  osName: string | null;
+  uptimeSeconds: number | null;
+  capturedAt: number;
+}
+
+/** Why a panel has no data, so the UI can explain rather than show zeros. */
+export type Unavailable =
+  | { kind: 'not-implemented'; phase: number; what: string }
+  | { kind: 'no-bridge'; what: string }
+  | { kind: 'error'; message: string };
+
+export type Loadable<T> =
+  | { state: 'loading' }
+  | { state: 'ready'; value: T }
+  | { state: 'unavailable'; reason: Unavailable };
+
+export type ViewId = 'chat' | 'security' | 'activity' | 'privacy' | 'settings';

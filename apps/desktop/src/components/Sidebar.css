@@ -1,0 +1,96 @@
+.sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-3);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-2) var(--sp-2);
+}
+.sidebar__mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 800;
+  font-size: var(--fs-lg);
+}
+.sidebar__name {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.sidebar__name small {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sidebar__nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sidebar__link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.sidebar__link:hover { background: var(--surface-raised); color: var(--text); }
+.sidebar__link.is-active {
+  background: var(--accent-ghost);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.sidebar__modes { margin-top: auto; display: grid; gap: var(--sp-2); }
+.sidebar__label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+  font-weight: 600;
+  padding-left: var(--sp-1);
+}
+.sidebar__select {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.sidebar__select:disabled { opacity: 0.5; cursor: not-allowed; }
+.sidebar__hint {
+  margin: 0;
+  padding-left: var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-subtle);
+}

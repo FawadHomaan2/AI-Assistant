@@ -305,6 +305,67 @@ export function securityAcknowledge(id: string): Promise<ApiResult<{ acknowledge
   return request(`/security/findings/${encodeURIComponent(id)}/acknowledge`, { method: 'POST' });
 }
 
+export interface ScopeRow {
+  scope: string;
+  description: string;
+  consequence: string;
+  granted: boolean;
+  pathScoped: boolean;
+  alwaysConfirmed: boolean;
+  targets: { target: string; expiresAt: string; source: string; grantedAt: string }[];
+}
+
+export interface PolicyState {
+  mode: string;
+  read_only: boolean;
+  auto_ceiling: string;
+  remembered: string[];
+  scopes: ScopeRow[];
+  limits: {
+    windowSeconds: number;
+    perMinute: Record<string, number>;
+    used: Record<string, number>;
+    promptsPerMinute: number;
+    promptsUsed: number;
+  };
+}
+
+export function permissions(): Promise<ApiResult<{ policy: PolicyState; paths: unknown }>> {
+  return request('/permissions');
+}
+
+export function grantScope(
+  scope: string,
+  options: { target?: string; ttlMinutes?: number } = {},
+): Promise<ApiResult<{ granted: boolean; scopes: ScopeRow[] }>> {
+  return request(`/permissions/scopes/${encodeURIComponent(scope)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(options),
+  });
+}
+
+export function revokeScope(
+  scope: string,
+  target = '',
+): Promise<ApiResult<{ granted: boolean; scopes: ScopeRow[] }>> {
+  const suffix = target ? `?target=${encodeURIComponent(target)}` : '';
+  return request(`/permissions/scopes/${encodeURIComponent(scope)}${suffix}`, {
+    method: 'DELETE',
+  });
+}
+
+export function setPolicyMode(
+  mode: string,
+  readOnly: boolean,
+): Promise<ApiResult<{ policy: PolicyState }>> {
+  return request('/permissions/mode', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode, readOnly }),
+  });
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

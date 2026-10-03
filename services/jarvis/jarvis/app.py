@@ -18,8 +18,8 @@ from jarvis.db.repositories import AuditRepository, SessionRepository, TurnRepos
 from jarvis.governance.consent import ConsentBroker
 from jarvis.governance.estop import EmergencyStop
 from jarvis.governance.pathjail import PathJail
+from jarvis.governance.persistence import GrantStore
 from jarvis.governance.policy import Policy
-from jarvis.governance.scopes import ScopeGrants
 from jarvis.memory.embeddings import best_available
 from jarvis.memory.store import MemoryStore
 from jarvis.platform_ import backends as os_backends
@@ -67,6 +67,7 @@ class Context:
     token: str
     jail: PathJail
     policy: Policy
+    grants: GrantStore
     consent: ConsentBroker
     registry: ToolRegistry
     executor: Executor
@@ -88,7 +89,13 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     # Governance plane. The jail's allowed roots default to the user's own
     # document folders; the policy engine gates every tool call against them.
     jail = PathJail()
-    policy = Policy(ScopeGrants(), mode=settings.mode)
+    # Permissions are loaded from disk, not rebuilt from defaults: a revocation
+    # that lasts until the next launch was never a revocation.
+    grants = GrantStore(db)
+    stored_grants = grants.load()
+    stored_grants.purge_expired()
+    stored_mode, stored_read_only = grants.load_posture()
+    policy = Policy(stored_grants, mode=stored_mode, read_only=stored_read_only)
     consent = ConsentBroker()
 
     # One browser for the process. Started lazily on first use, so an install
@@ -158,6 +165,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         token=token,
         jail=jail,
         policy=policy,
+        grants=grants,
         consent=consent,
         registry=registry,
         executor=executor,

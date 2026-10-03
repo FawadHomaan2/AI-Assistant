@@ -4,6 +4,9 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { useStore, PHASE } from '@/state/store';
 import {
   browserStatus,
+  grantScope,
+  permissions,
+  revokeScope,
   memoryClear,
   memoryEdit,
   memoryForget,
@@ -11,28 +14,9 @@ import {
   type BrowserStatus,
   type MemoryRow,
   type MemoryStats,
+  type ScopeRow,
 } from '@/lib/api';
 import './views.css';
-
-/** Scopes granted by default on install (ARCHITECTURE.md §7, axis 2). */
-const DEFAULT_SCOPES: { scope: string; what: string; on: boolean }[] = [
-  { scope: 'fs.read', what: 'Desktop, Documents, Downloads, Pictures', on: true },
-  { scope: 'fs.write', what: 'Desktop, Documents, Downloads, Pictures', on: true },
-  { scope: 'fs.delete', what: 'Recycle Bin only, with confirmation', on: false },
-  { scope: 'app.launch', what: 'Start applications', on: true },
-  { scope: 'app.control', what: 'Focus, minimise and close windows', on: false },
-  { scope: 'process.read', what: 'List running processes', on: true },
-  { scope: 'process.kill', what: 'End processes', on: false },
-  { scope: 'system.info', what: 'CPU, memory, disk, network counters', on: true },
-  { scope: 'system.settings', what: 'Change Windows settings', on: false },
-  { scope: 'shell.run', what: 'Run allowlisted commands', on: false },
-  { scope: 'shell.powershell', what: 'Run PowerShell', on: false },
-  { scope: 'browser.use', what: 'Drive a browser', on: false },
-  { scope: 'screen.capture', what: 'Take screenshots', on: false },
-  { scope: 'mic.listen', what: 'Use the microphone', on: false },
-  { scope: 'cloud.llm', what: 'Send prompts to a cloud AI provider', on: false },
-  { scope: 'security.read', what: 'Read security state', on: true },
-];
 
 export function PrivacyView() {
   const messages = useStore((s) => s.messages);
@@ -46,6 +30,41 @@ export function PrivacyView() {
   const [memories, setMemories] = useState<MemoryRow[] | null>(null);
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
   const [memoryQuery, setMemoryQuery] = useState('');
+  const [scopes, setScopes] = useState<ScopeRow[] | null>(null);
+  const [policyMode, setPolicyMode] = useState('');
+  const [scopeError, setScopeError] = useState('');
+  const [remembered, setRemembered] = useState<string[]>([]);
+  const readOnly = useStore((s) => s.readOnly);
+  const setReadOnly = useStore((s) => s.setReadOnly);
+
+  const loadScopes = useCallback(async () => {
+    const res = await permissions();
+    if (!res.ok) {
+      setScopes([]);
+      return;
+    }
+    setScopes(res.value.policy.scopes);
+    setPolicyMode(res.value.policy.mode);
+    setRemembered(res.value.policy.remembered);
+  }, []);
+
+  useEffect(() => {
+    void loadScopes();
+  }, [loadScopes]);
+
+  const toggle = useCallback(
+    async (row: ScopeRow) => {
+      setScopeError('');
+      const res = row.granted ? await revokeScope(row.scope) : await grantScope(row.scope);
+      if (!res.ok) {
+        // A toggle that flips in the interface but not in the core is worse
+        // than one that refuses: the user believes a permission changed.
+        setScopeError(`${row.scope} was not changed. The core did not accept it.`);
+      }
+      void loadScopes();
+    },
+    [loadScopes],
+  );
 
   useEffect(() => {
     let live = true;
@@ -83,25 +102,92 @@ export function PrivacyView() {
         setting you could mis-tune.
       </Explainer>
 
+      <Card title="What Jarvis may do right now">
+        <p className="card__note">
+          Two switches sit above every permission below. The mode sets how much
+          runs without asking; read-only makes Jarvis describe an action instead
+          of performing it. Both are stored in the core, so a paused assistant
+          stays paused across a restart.
+        </p>
+        <ul className="datalist">
+          <li>
+            <span>Mode</span>
+            <span className="datalist__v">{policyMode || '—'}</span>
+            <span className="datalist__note">Change it in the sidebar</span>
+          </li>
+          <li>
+            <span>Read-only</span>
+            <span className="datalist__v">{readOnly ? 'On' : 'Off'}</span>
+            <button
+              type="button"
+              className="linkbtn"
+              onClick={() => {
+                setReadOnly(!readOnly);
+                void loadScopes();
+              }}
+            >
+              {readOnly ? 'Let actions run' : 'Describe only'}
+            </button>
+          </li>
+          <li>
+            <span>Approvals remembered this session</span>
+            <span className="datalist__v">{remembered.length}</span>
+            {remembered.length > 0 && (
+              <span className="datalist__note">{remembered.join(', ')}</span>
+            )}
+          </li>
+        </ul>
+      </Card>
+
       <Card title="Capability scopes">
         <p className="card__note">
-          The grant set below is the intended install default: narrow, and
-          everything else off. Toggles become functional with the permission
-          system in Phase {PHASE.permissions}.
+          What Jarvis is allowed to do, read from the core. These are live:
+          revoking one takes effect immediately and survives a restart. Some
+          capabilities are confirmed every time however they are granted, because
+          what they authorise depends entirely on the specific request.
+          {policyMode ? ` Current mode: ${policyMode}.` : ''}
         </p>
-        <ul className="scopes">
-          {DEFAULT_SCOPES.map((s) => (
-            <li key={s.scope} className="scopes__row">
-              <code className="scopes__name">{s.scope}</code>
-              <span className="scopes__what">{s.what}</span>
-              <StatusBadge
-                label={s.on ? 'Granted' : 'Off'}
-                kind={s.on ? 'ok' : 'blocked'}
-                tone={s.on ? 'accent' : 'muted'}
-              />
-            </li>
-          ))}
-        </ul>
+        {scopeError && <p className="scan__error">{scopeError}</p>}
+        {scopes === null ? (
+          <p className="card__note">Asking the core…</p>
+        ) : scopes.length === 0 ? (
+          <p className="card__note">The core did not report its permissions.</p>
+        ) : (
+          <ul className="scopes">
+            {scopes.map((row) => (
+              <li key={row.scope} className="scopes__row">
+                <code className="scopes__name">{row.scope}</code>
+                <span className="scopes__what">
+                  {row.description}
+                  {row.consequence && <em className="scopes__why">{row.consequence}</em>}
+                  {row.targets.some((t) => t.target) && (
+                    <em className="scopes__why">
+                      Limited to: {row.targets.map((t) => t.target).filter(Boolean).join(', ')}
+                    </em>
+                  )}
+                </span>
+                <span className="scopes__controls">
+                  {row.alwaysConfirmed && (
+                    <StatusBadge label="Always asks" kind="pending" tone="muted" />
+                  )}
+                  <StatusBadge
+                    label={row.granted ? 'Granted' : 'Off'}
+                    kind={row.granted ? 'ok' : 'blocked'}
+                    tone={row.granted ? 'accent' : 'muted'}
+                  />
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    aria-label={`${row.granted ? 'Revoke' : 'Grant'} ${row.scope}`}
+                    onClick={() => void toggle(row)}
+                  >
+                    {row.granted ? 'Revoke' : 'Grant'}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card title="What Jarvis has learned">
@@ -288,14 +374,12 @@ export function PrivacyView() {
       </Card>
 
       <NotImplemented
-        phase={PHASE.permissions}
-        what="The full privacy dashboard needs the governance plane behind it."
+        phase={PHASE.plugins}
+        what="These need a folder picker and per-provider accounting that are not built."
         items={[
-          'Per-folder allow and deny lists with a path jail',
-          'Per-tool enable and disable switches',
+          'Choosing a folder to limit a permission to — the core supports it, the interface cannot yet pick one',
+          'Editing the browser host allowlist here instead of in config.toml',
           'Exactly which data categories a cloud provider has received',
-          'Microphone, cloud AI, file, browser and terminal master switches',
-          'Pause all automation',
         ]}
       />
     </Page>

@@ -10,7 +10,8 @@ from jarvis.browser.session import BrowserSession
 from jarvis.config import secrets
 from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer
-from jarvis.governance.scopes import Scope
+from jarvis.governance.risk import MODE_AUTO_CEILING
+from jarvis.governance.scopes import PATH_SCOPES, Scope
 from jarvis.tools.documents import DocumentTool
 from jarvis.transport import auth
 from jarvis.transport.schemas import (
@@ -135,24 +136,97 @@ async def permissions(request: Request) -> dict[str, object]:
 
 @router.post("/permissions/scopes/{scope}")
 async def grant_scope(request: Request, scope: str) -> dict[str, object]:
+    """Grant a capability, optionally to one folder and for a limited time."""
     ctx = _ctx(request)
+    body = await request.json() if await request.body() else {}
     try:
-        ctx.policy.grants.grant(Scope(scope))
+        parsed = Scope(scope)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown scope {scope!r}") from exc
-    log.info("scope granted", scope=scope)
-    return {"granted": True, "scopes": ctx.policy.grants.describe()}
+
+    target = str(body.get("target") or "")
+    ttl = body.get("ttlMinutes")
+    if target and parsed not in PATH_SCOPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{scope} is not a folder permission, so a target makes no sense for it.",
+        )
+    grant = ctx.policy.grants.grant(parsed, target, ttl_minutes=int(ttl) if ttl else None)
+    ctx.grants.save(ctx.policy.grants)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="permission.grant",
+            args_digest=AuditRepository.digest({"scope": scope, "target": target, "ttl": ttl}),
+            decision="allowed",
+        )
+    )
+    log.info("scope granted", scope=scope, target=target, expires=grant.expires_at)
+    return {"granted": True, "grant": grant.to_dict(), "scopes": ctx.policy.grants.describe()}
 
 
 @router.delete("/permissions/scopes/{scope}")
-async def revoke_scope(request: Request, scope: str) -> dict[str, object]:
+async def revoke_scope(request: Request, scope: str, target: str = "") -> dict[str, object]:
     ctx = _ctx(request)
     try:
-        ctx.policy.grants.revoke(Scope(scope))
+        removed = ctx.policy.grants.revoke(Scope(scope), target)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown scope {scope!r}") from exc
-    log.info("scope revoked", scope=scope)
-    return {"granted": False, "scopes": ctx.policy.grants.describe()}
+    ctx.grants.save(ctx.policy.grants)
+    # A revoked capability must also drop any "allow this for the session"
+    # approval that referenced it, or the grant comes back by the side door.
+    ctx.policy.forget_all()
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="permission.revoke",
+            args_digest=AuditRepository.digest({"scope": scope, "target": target}),
+            decision="allowed",
+        )
+    )
+    log.info("scope revoked", scope=scope, target=target, removed=removed)
+    return {"granted": False, "removed": removed, "scopes": ctx.policy.grants.describe()}
+
+
+@router.post("/permissions/mode")
+async def set_mode(request: Request) -> dict[str, object]:
+    """Change the global posture, and persist it.
+
+    Persisted deliberately: a paused assistant that quietly returns to acting
+    after a restart is the worst possible default, because the user's last
+    instruction was "stop".
+    """
+    ctx = _ctx(request)
+    body = await request.json() if await request.body() else {}
+    mode = str(body.get("mode") or ctx.policy.mode)
+    if mode not in MODE_AUTO_CEILING:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown mode {mode!r}. Expected one of {sorted(MODE_AUTO_CEILING)}.",
+        )
+    read_only = bool(body.get("readOnly", ctx.policy.read_only))
+    ctx.policy.mode = mode
+    ctx.policy.read_only = read_only
+    # Approvals were given under the old posture; they do not carry over.
+    ctx.policy.forget_all()
+    ctx.grants.save_posture(mode, read_only)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="permission.mode",
+            args_digest=AuditRepository.digest({"mode": mode, "readOnly": read_only}),
+            decision="allowed",
+        )
+    )
+    return {"policy": ctx.policy.describe()}
+
+
+@router.delete("/permissions/remembered")
+async def forget_approvals(request: Request) -> dict[str, object]:
+    """Drop every "allow this for the session" approval."""
+    ctx = _ctx(request)
+    ctx.policy.forget_all()
+    return {"policy": ctx.policy.describe()}
 
 
 @router.get("/voice/status")

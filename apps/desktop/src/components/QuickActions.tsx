@@ -18,6 +18,7 @@ export function QuickActions() {
   const logActivity = useStore((s) => s.logActivity);
   const setDraft = useStore((s) => s.setDraft);
   const toggleVoice = useStore((s) => s.toggleVoice);
+  const setView = useStore((s) => s.setView);
 
   return (
     <section className="quick" aria-label="Quick actions">
@@ -39,6 +40,13 @@ export function QuickActions() {
                 // phase delivers it rather than pretending to work.
                 if (ready && a.handler === 'voice') {
                   toggleVoice();
+                  return;
+                }
+                if (ready && a.handler === 'privacy') {
+                  // Permissions are changed in a dedicated view, not by typing
+                  // a request: an assistant should not be the one granting
+                  // itself capabilities.
+                  setView('privacy');
                   return;
                 }
                 if (ready && a.template) {

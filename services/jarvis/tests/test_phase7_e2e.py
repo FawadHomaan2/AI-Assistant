@@ -256,7 +256,7 @@ class Gate:
         self.db = Database(":memory:")
         self.audit = AuditRepository(self.db)
         self.estop = EmergencyStop()
-        self.policy = Policy(ScopeGrants(granted={Scope.BROWSER_USE}), mode="guarded")
+        self.policy = Policy(ScopeGrants.of({Scope.BROWSER_USE}), mode="guarded")
         self.prompts: list[Any] = []
         self.approve = approve
         self.consent = ConsentBroker(prompt=self._answer, timeout=5)
@@ -345,7 +345,7 @@ async def test_browsing_without_the_scope_is_denied_before_the_browser_starts(
     session, server
 ) -> None:
     gate = Gate(session, approve=True)
-    gate.policy = Policy(ScopeGrants(granted=set()), mode="guarded")
+    gate.policy = Policy(ScopeGrants.of(set()), mode="guarded")
     gate.executor.policy = gate.policy
     try:
         events = await gate.run({"operation": "open", "url": f"{server}/"})

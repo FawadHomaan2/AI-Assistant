@@ -237,8 +237,14 @@ class FileSystemTool(Tool):
             raise ToolInputInvalid(f"Unknown operation {op!r}. Supported: {', '.join(OPERATIONS)}.")
 
         if op in ("list", "search", "stat", "read", "find_duplicates"):
+            # The target is resolved even though nothing changes, because the
+            # permission engine checks folder-limited grants against it. Without
+            # it, `fs.read` granted on Desktop alone would permit reading
+            # Documents — the grant would be decorative.
+            target = self._resolve(args, "path", Access.READ)
             return Preview(
-                summary=f"{op} — inspection only, nothing changes",
+                summary=f"{op} {target} — inspection only, nothing changes",
+                targets=[str(target)],
                 affected=0,
                 reversible="undoable",
                 blast_radius="Nothing changes.",

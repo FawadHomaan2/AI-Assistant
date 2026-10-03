@@ -292,3 +292,13 @@
   overflow-x: auto;
   max-height: 18rem;
 }
+
+.scopes__why {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+  font-style: normal;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.scopes__controls { display: flex; align-items: center; gap: var(--sp-3); }

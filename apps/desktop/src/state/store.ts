@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 9;
+export const CURRENT_PHASE = 10;
 
 export interface QuickAction {
   id: string;
@@ -50,7 +50,7 @@ export interface QuickAction {
    */
   template?: string;
   /** A built-in handler, for actions that are not a chat message. */
-  handler?: 'voice';
+  handler?: 'voice' | 'privacy';
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
@@ -111,13 +111,19 @@ export const QUICK_ACTIONS: QuickAction[] = [
     template: 'search the web for ',
   },
   {
-    // Genuinely gated: the scope-grant UI arrives with the permission system.
-    // Listed anyway so the capability is discoverable, and clicking it says
-    // which phase delivers it rather than doing nothing.
     id: 'permissions',
     label: 'Manage Permissions',
     hint: 'Grant and revoke what Jarvis is allowed to do',
     availableIn: PHASE.permissions,
+    handler: 'privacy',
+  },
+  {
+    // Genuinely unbuilt. Listed so the capability is discoverable, and clicking
+    // it says which phase delivers it rather than doing nothing.
+    id: 'plugins',
+    label: 'Plugins',
+    hint: 'Add capabilities from isolated, scoped plugins',
+    availableIn: PHASE.plugins,
   },
   {
     id: 'voice',
@@ -140,6 +146,8 @@ interface AppState {
 
   // ── Posture ─────────────────────────────────────────────────────────────
   mode: AssistantMode;
+  readOnly: boolean;
+  setReadOnly: (readOnly: boolean) => void;
   setMode: (m: AssistantMode) => void;
   stopped: boolean;
 
@@ -391,8 +399,32 @@ export const useStore = create<AppState>((set, get) => {
 
     mode: 'guarded',
     setMode: (mode) => {
+      // Optimistic in the interface, authoritative in the core. The picker used
+      // to change only this store, which meant selecting "Paused" looked like
+      // it had worked while the policy engine carried on at its old ceiling.
       set({ mode, ...(mode !== 'paused' ? { stopped: false } : {}) });
       get().logActivity({ summary: `Mode set to ${mode}`, status: 'succeeded' });
+      void api.setPolicyMode(mode, get().readOnly).then((res) => {
+        if (res.ok) return;
+        get().logActivity({
+          summary: 'The core did not accept that mode',
+          status: 'failed',
+          detail: 'The interface and the core disagree; nothing has changed in the core.',
+        });
+      });
+    },
+
+    readOnly: false,
+    setReadOnly: (readOnly) => {
+      set({ readOnly });
+      get().logActivity({
+        summary: readOnly ? 'Read-only mode on' : 'Read-only mode off',
+        status: 'succeeded',
+        detail: readOnly
+          ? 'Jarvis will say what an action would do and not do it.'
+          : 'Actions run again, subject to the usual confirmations.',
+      });
+      void api.setPolicyMode(get().mode, readOnly);
     },
     stopped: false,
 

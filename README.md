@@ -6,7 +6,7 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 9 of 12 — the Security Center works.**
+> **Current state: Phase 10 of 12 — the permission system is complete.**
 > Jarvis works with your files, reads documents, starts installed programs,
 > manages windows, reports what is running, diagnoses why the machine is slow
 > by measuring it, browses the web — navigating, reading pages, and filling in
@@ -19,6 +19,12 @@ Say **"Jarvis"** — or press `Ctrl+Space`.
 > visit hosts on an allowlist — so a page that tells the model to go somewhere
 > else and paste what it just read is refused by the gate rather than by the
 > model's good judgement.
+>
+> Permissions are **folder-scoped, expiring and persisted**: granting write
+> access to Desktop does not grant it to Documents, and revoking something
+> stays revoked across a restart. Read-only mode makes Jarvis describe an
+> action instead of performing it, and rate limits stop a confused loop
+> grinding through approvals.
 >
 > The Security Center **reads and never writes** — it cannot turn Defender or
 > the firewall on or off — and something it has not seen before is reported as

@@ -109,6 +109,36 @@ class Executor:
             },
         )
 
+        # Read-only mode answers with the preview instead of acting. The user
+        # asked what would happen; that is exactly what a preview is, so there
+        # is nothing to refuse.
+        if decision.verdict is Verdict.DRY_RUN:
+            self._audit(tool_name, action, "dry_run", session_id, risk=decision.risk)
+            yield AgentEvent(
+                EventType.TOOL_RESULT,
+                {
+                    "tool": tool_name,
+                    "operation": action,
+                    "ok": True,
+                    "dryRun": True,
+                    "summary": f"Would {preview.summary[0].lower()}{preview.summary[1:]}"
+                    if preview.summary
+                    else "Would run this action",
+                    "changes": [],
+                    "data": {
+                        "wouldAffect": preview.affected,
+                        "targets": preview.targets,
+                        "blastRadius": preview.blast_radius,
+                        "reversible": preview.reversible,
+                        "reason": decision.reason,
+                    },
+                    "verified": True,
+                    "elapsedMs": int((time.monotonic() - started) * 1000),
+                    "risk": decision.risk.label,
+                },
+            )
+            return
+
         if decision.verdict is Verdict.DENY:
             self._audit(tool_name, action, "denied", session_id, risk=decision.risk)
             yield AgentEvent(
@@ -125,6 +155,22 @@ class Executor:
 
         # ── 3. Consent ───────────────────────────────────────────────────
         if decision.verdict is Verdict.CONFIRM:
+            # A flood of prompts is how a dangerous one gets approved by
+            # accident, so the prompt budget is checked before asking.
+            if not (budget := self.policy.limiter.check_prompt()).allowed:
+                self._audit(tool_name, action, "rate_limited", session_id, risk=decision.risk)
+                yield AgentEvent(
+                    EventType.NOTICE,
+                    {
+                        "message": budget.reason,
+                        "tool": tool_name,
+                        "denialCode": "prompt_rate_limited",
+                        "retryAfterSeconds": budget.retry_after_seconds,
+                        "blocked": True,
+                    },
+                )
+                return
+            self.policy.limiter.record_prompt()
             try:
                 answer = await self._ask(tool_name, preview, decision, origin)
             except (ConsentDeclined, ConsentTimedOut) as exc:
@@ -143,6 +189,10 @@ class Executor:
         if self.estop.engaged:
             yield self._error(EmergencyStopped("Emergency stop engaged before the action ran."))
             return
+
+        # Budget is consumed where the action actually happens, so a denied or
+        # declined call never eats into it.
+        self.policy.limiter.record(decision.risk)
 
         try:
             result = await tool.execute(args)

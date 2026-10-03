@@ -20,8 +20,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from jarvis.governance.limits import RateLimiter
 from jarvis.governance.risk import MODE_AUTO_CEILING, Risk
-from jarvis.governance.scopes import DESCRIPTIONS, Scope, ScopeGrants
+from jarvis.governance.scopes import DESCRIPTIONS, NEVER_BLANKET, PATH_SCOPES, Scope, ScopeGrants
 from jarvis.util.logging import get_logger
 
 log = get_logger(__name__)
@@ -31,6 +32,10 @@ class Verdict(StrEnum):
     ALLOW = "allow"  # run it now
     CONFIRM = "confirm"  # ask the user first
     DENY = "deny"  # refuse; no prompt can rescue it
+    #: Read-only mode: report what the action WOULD do, and do nothing.
+    #: Distinct from DENY because the user gets the answer they wanted —
+    #: the preview — rather than a refusal they have to work around.
+    DRY_RUN = "dry_run"
 
 
 @dataclass
@@ -44,6 +49,8 @@ class Decision:
     #: Only meaningful for CONFIRM.
     allow_remember: bool = False
     confirm_phrase: str = ""
+    #: Set when the verdict is DENY for a rate limit.
+    retry_after_seconds: float = 0.0
 
     @property
     def allowed(self) -> bool:
@@ -58,6 +65,7 @@ class Decision:
             "missing_scopes": [s.value for s in self.missing_scopes],
             "allow_remember": self.allow_remember,
             "confirm_phrase": self.confirm_phrase,
+            "retry_after_seconds": self.retry_after_seconds,
         }
 
 
@@ -74,6 +82,9 @@ class ActionRequest:
     #: Whether the effect can be undone, which the consent prompt must state.
     reversible: str = "unknown"
     summary: str = ""
+    #: The paths or objects this acts on. Path scopes are checked against each
+    #: one; without them a folder-limited grant could not be enforced.
+    targets: list[str] = field(default_factory=list)
 
 
 #: A bulk operation is riskier than the same operation on one item: "delete 4000
@@ -90,11 +101,15 @@ class Policy:
         mode: str = "guarded",
         *,
         read_only: bool = False,
+        limiter: RateLimiter | None = None,
     ) -> None:
-        self.grants = grants or ScopeGrants()
+        self.grants = grants if grants is not None else ScopeGrants()
         self.mode = mode
         #: Hard override: every mutating action becomes a dry run.
         self.read_only = read_only
+        #: The backstop behind the other two axes: scopes and confirmation both
+        #: assume a human in the loop, and a runaway agent loop has none.
+        self.limiter = limiter or RateLimiter()
         #: Per-session approvals, keyed by the tool/action pair.
         self._remembered: set[str] = set()
 
@@ -139,12 +154,14 @@ class Policy:
                 denial_code="emergency_stop",
             )
 
-        # 2. Read-only forces every mutating action to a dry run.
+        # 2. Read-only turns every mutating action into a dry run. Not a
+        #    denial: the user still gets the answer — what this would have done
+        #    — which is the whole point of the mode.
         if self.read_only and risk > Risk.SAFE:
             return Decision(
-                Verdict.DENY,
+                Verdict.DRY_RUN,
                 risk,
-                "Read-only mode is on, so Jarvis will describe this action but not perform it.",
+                "Read-only mode is on. Jarvis will say what this would do and not do it.",
                 denial_code="read_only",
             )
 
@@ -160,18 +177,34 @@ class Policy:
         # 4. Scopes. A missing grant is a denial, not a prompt: the user grants
         #    capabilities in Privacy settings deliberately, not under time
         #    pressure in the middle of a task.
-        if missing := self.grants.missing(request.scopes):
+        if missing := self.grants.missing(request.scopes, request.targets):
             names = ", ".join(DESCRIPTIONS.get(s, s.value) for s in missing)
             return Decision(
                 Verdict.DENY,
                 risk,
                 f"This needs permission Jarvis does not have: {names}. "
-                f"Grant it in Privacy settings if you want this to work.",
+                + (
+                    f"The grant you have does not cover {request.targets[0]}. "
+                    if any(s in PATH_SCOPES for s in missing) and request.targets
+                    else ""
+                )
+                + "Grant it in Privacy settings if you want this to work.",
                 denial_code="missing_scope",
                 missing_scopes=missing,
             )
 
-        # 5. Risk against the mode's ceiling.
+        # 5. Rate limits. A refusal, never a queue: silently delaying what the
+        #    user asked for would hide the loop that caused it.
+        if not (budget := self.limiter.check(risk)).allowed:
+            return Decision(
+                Verdict.DENY,
+                risk,
+                budget.reason,
+                denial_code="rate_limited",
+                retry_after_seconds=budget.retry_after_seconds,
+            )
+
+        # 6. Risk against the mode's ceiling.
         ceiling = MODE_AUTO_CEILING.get(self.mode, Risk.LOW)
 
         if risk >= Risk.CRITICAL:
@@ -182,6 +215,20 @@ class Policy:
                 self._confirm_reason(request, risk),
                 allow_remember=False,
                 confirm_phrase=self._phrase_for(request),
+            )
+
+        if blanket := [s for s in request.scopes if s in NEVER_BLANKET]:
+            # Some capabilities cannot be authorised in advance: what is being
+            # authorised depends entirely on what is sent or run, which a
+            # standing grant cannot describe. These confirm every time.
+            names = ", ".join(DESCRIPTIONS.get(s, s.value) for s in blanket)
+            return Decision(
+                Verdict.CONFIRM,
+                risk,
+                f"{names} is confirmed every time, whatever the mode — what it does "
+                f"depends on the specific request.",
+                allow_remember=False,
+                confirm_phrase=self._phrase_for(request) if risk.needs_typed_phrase else "",
             )
 
         if risk <= ceiling:
@@ -220,6 +267,7 @@ class Policy:
         return {
             "mode": self.mode,
             "read_only": self.read_only,
+            "limits": self.limiter.describe(),
             "auto_ceiling": MODE_AUTO_CEILING.get(self.mode, Risk.LOW).label,
             "remembered": sorted(self._remembered),
             "scopes": self.grants.describe(),

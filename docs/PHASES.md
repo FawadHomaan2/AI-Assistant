@@ -476,12 +476,84 @@ are listed in ARCHITECTURE §16 as needing privileges Jarvis does not ask for.
 *Gate:* findings carry evidence and the correct classification; unfamiliar is
 reported as unfamiliar, never as malware — **met**.
 
-## Phase 10 — Permissions · next
-Full risk × scope × mode matrix, scope-grant UI, typed-phrase tier-5 confirm,
-read-only mode, rate limits.
-*Gate:* red-team the gate — no tool reachable without passing it.
+## Phase 10 — Permissions · **done**
 
-## Phase 11 — Plugins · planned
+Shipped: folder-scoped and expiring grants, grants and posture persisted across
+restarts, read-only as a real dry run, rate limits, a working scope-grant UI,
+and a red-team suite whose whole job is to find a way past the gate.
+
+**Grants name folders, not just capabilities.** `fs.write` on Desktop covers
+`Desktop/notes/todo.txt` and does not cover Documents. Without that, a single
+global "can write files" grant would make the folder permissions decorative,
+since the jail and the grant would always agree. Containment is checked on
+normalised paths, so the sibling trap — a grant on `/home/me/doc` appearing to
+cover `/home/me/documents` — is refused, and every target must be covered, not
+just one of them.
+
+**A revocation that lasts until the next launch was never a revocation.** Both
+directions persist, with expiry. A fully revoked set is stored distinguishably
+from a fresh install, so revoking everything does not spring back to the
+defaults on restart. The posture persists for the same reason in the other
+direction: a paused assistant that quietly returns to acting is the worst
+possible default, because the user's last instruction was "stop".
+
+**Expiry is checked on use, not swept.** A grant nothing swept is a grant that
+still works. An expiry that cannot be parsed counts as expired — "I cannot tell
+when this stops" has only one safe reading.
+
+**Read-only is a dry run, not a refusal.** The user asked what would happen;
+a preview is exactly that, so the action returns "Would create folder Notes"
+with the affected count and blast radius, and the tool is never reached.
+
+**Some capabilities can never be granted in advance.** Administrator actions,
+PowerShell, sending data to an external service and changing security settings
+confirm every time, whatever the mode and whatever was remembered: what they
+authorise depends entirely on the specific request, which a standing grant
+cannot describe.
+
+**Rate limits are the backstop behind the other two axes.** Scopes and
+confirmations assume a human in the loop; a confused agent loop has none. Per-
+tier budgets per minute (240 safe, 3 critical) stop a runaway loop, and a
+separate prompt budget stops burying the one confirmation that matters in forty
+that do not. A limit is a refusal, never a queue — silently delaying what the
+user asked for would hide the loop that caused it.
+
+**Verified on Linux (57 red-team tests, 879 in total).** Each one is an attempt
+to get past the gate: a path grant leaking to a sibling or a parent; traversal
+inside a granted folder; an expired grant still working; a remembered approval
+surviving a revocation; bulk size dodged by a remembered answer; tier 5
+approved by a setting, a mode or a memory; a runaway loop. Plus a structural
+test that `Tool.execute` is called from exactly one file in the agent layer, so
+a second route would have to be added deliberately and visibly.
+
+Two real bugs were found by those tests and fixed:
+
+  - a zero-budget rate limit crashed on an empty window. A crash in the limiter
+    is a bypass, because the caller never gets a verdict at all.
+  - the filesystem tool's read previews declared no targets, so a
+    folder-limited `fs.read` grant could not be enforced on `list`, `search`,
+    `read` or `stat`. The grant was decorative for exactly the operations most
+    likely to be used.
+
+A third was found by wiring the interface up: the sidebar mode picker changed
+only the interface's own state and never told the core, so selecting "Paused"
+looked like it had worked while the policy engine carried on at its old
+ceiling.
+
+Driven through the built interface against a live core: revoking `fs.read` in
+the Privacy view, the core refusing the next request and naming the folder the
+grant does not cover, re-granting it limited to Desktop, Desktop succeeding and
+Downloads still refused, and read-only answering "Would create folder Notes"
+with the folder genuinely not created.
+
+**Not wired:** choosing a folder to limit a permission to from the interface —
+the core supports targets and the API accepts them, but there is no folder
+picker, so a scoped grant is set through the API or config today. Editing the
+browser host allowlist from the interface is in the same position.
+
+*Gate:* red-team the gate — no tool reachable without passing it — **met**.
+
+## Phase 11 — Plugins · next
 Manifest, process isolation, scoped tool proxy, enable/disable UI, one reference
 plugin.
 *Gate:* a plugin cannot exceed its declared scopes.

@@ -25,7 +25,7 @@ def req(
 
 
 def all_scopes() -> ScopeGrants:
-    return ScopeGrants(granted=set(Scope))
+    return ScopeGrants.of(set(Scope))
 
 
 class TestModes:
@@ -86,14 +86,14 @@ class TestCritical:
 class TestScopes:
     def test_missing_scope_denies_rather_than_prompting(self) -> None:
         """Permissions are granted deliberately, not under time pressure."""
-        policy = Policy(ScopeGrants(granted={Scope.FS_READ}))
+        policy = Policy(ScopeGrants.of({Scope.FS_READ}))
         decision = policy.evaluate(req(Risk.SAFE, [Scope.FS_DELETE]))
         assert decision.verdict is Verdict.DENY
         assert decision.denial_code == "missing_scope"
         assert Scope.FS_DELETE in decision.missing_scopes
 
     def test_denial_names_the_missing_permission_in_plain_words(self) -> None:
-        policy = Policy(ScopeGrants(granted=set()))
+        policy = Policy(ScopeGrants.of(set()))
         decision = policy.evaluate(req(Risk.SAFE, [Scope.FS_DELETE]))
         assert "Delete files" in decision.reason
         assert "Privacy settings" in decision.reason
@@ -103,7 +103,7 @@ class TestScopes:
 
     def test_scope_check_precedes_the_risk_check(self) -> None:
         """A safe action still needs its scope."""
-        policy = Policy(ScopeGrants(granted=set()), mode="developer")
+        policy = Policy(ScopeGrants.of(set()), mode="developer")
         assert policy.evaluate(req(Risk.SAFE, [Scope.FS_READ])).denial_code == "missing_scope"
 
 

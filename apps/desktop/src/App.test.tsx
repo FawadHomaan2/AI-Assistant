@@ -133,9 +133,18 @@ describe('App shell', () => {
   it('a gated quick action names the phase it needs rather than acting', async () => {
     const user = userEvent.setup();
     await renderApp();
-    await user.click(screen.getByRole('button', { name: /Manage Permissions/ }));
-    expect(screen.getByText(/needs Phase 10/i)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Plugins/ }));
+    expect(screen.getByText(/needs Phase 11/i)).toBeTruthy();
     expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+  });
+
+  it('managing permissions opens the Privacy view rather than typing a request', async () => {
+    // An assistant should not be the one granting itself capabilities, so this
+    // action navigates instead of pre-filling the composer.
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /Manage Permissions/ }));
+    expect(screen.getByRole('heading', { name: 'Privacy' })).toBeTruthy();
   });
 
   it('the security scan action acts now that Phase 9 has shipped', async () => {

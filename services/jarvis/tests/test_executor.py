@@ -48,7 +48,7 @@ class Harness:
         self.db = Database(":memory:")
         self.audit = AuditRepository(self.db)
         self.estop = EmergencyStop()
-        self.policy = Policy(ScopeGrants(granted=scopes), mode=mode)
+        self.policy = Policy(ScopeGrants.of(scopes), mode=mode)
         self.prompts: list = []
         self.approve = approve
         self.remember = "no"

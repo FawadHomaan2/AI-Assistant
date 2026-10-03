@@ -308,8 +308,8 @@ describe('store: voice', () => {
 describe('phase gating', () => {
   beforeEach(reset);
 
-  it('shipped phase matches the security phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.security);
+  it('shipped phase matches the permissions phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.permissions);
   });
 
   // An action that claims to be available must have something behind it.
@@ -573,5 +573,43 @@ describe('memory events', () => {
   it('forgetting nothing says so rather than claiming success', () => {
     handle({ type: 'memory.forgotten', message: 'I had nothing stored that matches that.', removed: [] });
     expect(useStore.getState().activity.at(0)?.detail).toBe('nothing matched');
+  });
+});
+
+describe('permission posture', () => {
+  beforeEach(reset);
+
+  const policyApi = async () => await import('@/lib/api');
+
+  it('a mode change is sent to the core, not just held locally', async () => {
+    // Regression: the picker used to change only this store, so selecting
+    // "Paused" looked like it had worked while the policy engine carried on.
+    const api = await policyApi();
+    const spy = vi.spyOn(api, 'setPolicyMode').mockResolvedValue({ ok: true, value: {} as never });
+    useStore.getState().setMode('paused');
+    expect(spy).toHaveBeenCalledWith('paused', false);
+    expect(useStore.getState().mode).toBe('paused');
+    spy.mockRestore();
+  });
+
+  it('read-only is sent to the core and explains itself', async () => {
+    const api = await policyApi();
+    const spy = vi.spyOn(api, 'setPolicyMode').mockResolvedValue({ ok: true, value: {} as never });
+    useStore.getState().setReadOnly(true);
+    expect(spy).toHaveBeenCalledWith('guarded', true);
+    expect(useStore.getState().activity.at(-1)?.detail).toContain('would do');
+    spy.mockRestore();
+  });
+
+  it('a mode the core rejects is reported rather than silently diverging', async () => {
+    const api = await policyApi();
+    const spy = vi
+      .spyOn(api, 'setPolicyMode')
+      .mockResolvedValue({ ok: false, reason: { kind: 'http', status: 422, detail: 'no' } } as never);
+    useStore.getState().setMode('developer');
+    await new Promise((r) => setTimeout(r, 0));
+    const failures = useStore.getState().activity.filter((e) => e.status === 'failed');
+    expect(failures.map((e) => e.summary)).toContain('The core did not accept that mode');
+    spy.mockRestore();
   });
 });

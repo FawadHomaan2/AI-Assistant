@@ -150,6 +150,9 @@ class Tool(abc.ABC):
             affected=max(preview.affected, 1),
             reversible=preview.reversible,
             summary=preview.summary,
+            # The measured targets, so a folder-limited grant can be enforced
+            # against what this call actually touches rather than its name.
+            targets=list(preview.targets),
         )
 
     def risk_for(self, args: dict[str, Any], preview: Preview) -> Risk:

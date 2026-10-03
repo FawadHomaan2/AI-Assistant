@@ -153,9 +153,38 @@ CREATE TABLE security_baseline (
 CREATE INDEX idx_baseline_category ON security_baseline(category);
 """
 
+# Phase 10: permissions that survive a restart.
+_0004_GRANTS = """
+CREATE TABLE scope_grants (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope      TEXT NOT NULL,
+    -- A folder, for the path scopes. Empty means "wherever the scope applies".
+    target     TEXT NOT NULL DEFAULT '',
+    granted_at TEXT NOT NULL,
+    -- Empty means it does not expire. Checked on every use rather than swept:
+    -- a grant that is never swept is a grant that still works.
+    expires_at TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL DEFAULT 'user'
+               CHECK (source IN ('default','user','session'))
+);
+-- One row per capability-and-folder, so revoking once actually revokes.
+CREATE UNIQUE INDEX idx_grant_scope_target ON scope_grants(scope, target);
+
+-- The global posture, kept here so a restart does not silently return a paused
+-- assistant to its default of acting.
+CREATE TABLE posture (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    mode       TEXT NOT NULL DEFAULT 'guarded'
+               CHECK (mode IN ('paused','guarded','assisted','developer')),
+    read_only  INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+"""
+
 ALL: tuple[tuple[int, str], ...] = (
     (1, _0001_INITIAL),
     (2, _0002_MEMORY),
     (3, _0003_SECURITY),
+    (4, _0004_GRANTS),
 )
 LATEST = max(version for version, _ in ALL)

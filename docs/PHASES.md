@@ -628,7 +628,66 @@ current boundary is rather than implying a stronger one.
 
 *Gate:* a plugin cannot exceed its declared scopes — **met**.
 
-## Phase 12 — Packaging · next
-PyInstaller sidecar, Tauri NSIS installer, shortcuts, uninstaller, autostart,
-first-run model fetcher, code signing, update channel.
-*Gate:* `AI-Assistant-Setup.exe` installs and runs on a clean Windows 10 and 11 VM.
+## Phase 12 — Packaging · **written; the gate is NOT met**
+
+Shipped: a PyInstaller spec, a build script that builds and smoke-tests the
+core, a Windows build script, Tauri sidecar and resource wiring, NSIS install
+and uninstall hooks, and a verifying model fetcher with its own interface.
+
+**The gate is not met, and cannot be met from here.** The gate is
+`AI-Assistant-Setup.exe` installing and running on a clean Windows 10 and 11
+VM. PyInstaller does not cross-compile and neither does the WebView2 shell, so
+**the installer has never been built**, no `.exe` exists, and nothing has been
+installed anywhere. Saying otherwise would be the exact failure this project
+spent twelve phases avoiding. `docs/PACKAGING.md` carries the checklist that
+would have to pass, with nothing ticked.
+
+**What was verified here, on Linux:** the PyInstaller spec produces a working
+41 MB single-file binary; that binary starts, prints its handshake, applies all
+five migrations, answers `/health` and reports all 15 tools. The build script
+ran end to end — build, smoke test, install under the target-triple name Tauri
+expects. The same spec on Windows is the same spec; the bootloader and the
+hidden imports differ, and those are exactly what is unverified.
+
+**The core does not bundle its heavy dependencies.** Whisper, Piper, ONNX,
+Playwright and the document readers are excluded, keeping the installer around
+50 MB rather than 300. Each already reports itself unavailable with a reason,
+so excluding one degrades a feature rather than crashing the core.
+
+**Models are fetched, verified, and refused when unverifiable.** A model is
+loaded and executed by an inference runtime, so a substituted download is a
+code-execution problem. Every file is checked against a recorded SHA-256; a
+mismatch deletes it and refuses. Downloads land in a `.part` file and are
+renamed only after verification, so an interrupted fetch cannot leave a
+truncated model to fail mysteriously later.
+
+**The checksums are empty, and that is deliberate.** An empty checksum means
+the model is not fetchable: Jarvis refuses rather than downloading something it
+cannot check, and the interface says so. Filling them in needs the real files
+and is a release task in `docs/PACKAGING.md`. A plausible-looking hash that
+nobody ever checked would be worse than none, because it looks finished.
+
+**The uninstaller asks once before deleting your data, and defaults to
+keeping.** Deleting silently would destroy a year of history nobody agreed to
+lose; leaving silently would be lying about having uninstalled.
+
+**Code signing is not done.** There is no certificate, so any build produced
+from this tree is unsigned: SmartScreen will warn every user, some antivirus
+products will quarantine an unsigned binary that spawns PowerShell, and no
+SmartScreen reputation accumulates. The build script warns about it and
+continues; `docs/PACKAGING.md` explains why it is not optional for a release.
+
+**Also not built:** an update channel. Tauri's updater needs a signing key and
+a hosted manifest, neither of which exists, and a half-wired updater is worse
+than none.
+
+**Verified on Linux (32 tests):** the model catalogue states a size and a
+purpose for everything; nothing is fetchable without a checksum; a corrupted
+download is deleted; an interrupted one leaves no `.part` behind; a non-https
+URL is refused; an installed model is not re-fetched; and structural checks
+that the spec builds one console binary without UPX, the Tauri config ships
+the sidecar and installs per-user, the uninstaller asks before deleting and
+defaults to No, and the build scripts smoke-test what they built and refuse to
+package failing tests.
+
+*Gate:* a clean Windows 10 and 11 VM — **not met, and not attemptable here.**

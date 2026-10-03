@@ -3,7 +3,14 @@ import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useStore, CURRENT_PHASE } from '@/state/store';
 import { getShellInfo, hasShell, setGlobalShortcut } from '@/lib/bridge';
-import { listPlugins, setPluginEnabled, type PluginRow } from '@/lib/api';
+import {
+  fetchModel,
+  listModels,
+  listPlugins,
+  setPluginEnabled,
+  type ModelRow,
+  type PluginRow,
+} from '@/lib/api';
 import './views.css';
 
 type Provider = 'local' | 'cloud' | 'custom';
@@ -25,6 +32,23 @@ export function SettingsView() {
   const core = useStore((s) => s.core);
   const [plugins, setPlugins] = useState<PluginRow[] | null>(null);
   const [pluginDir, setPluginDir] = useState('');
+  const [models, setModels] = useState<ModelRow[] | null>(null);
+  const [modelNote, setModelNote] = useState('');
+  const [modelError, setModelError] = useState('');
+
+  const loadModels = useCallback(async () => {
+    const res = await listModels();
+    if (!res.ok) {
+      setModels([]);
+      return;
+    }
+    setModels(res.value.models);
+    setModelNote(res.value.note);
+  }, []);
+
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
 
   const loadPlugins = useCallback(async () => {
     const res = await listPlugins();
@@ -249,6 +273,45 @@ export function SettingsView() {
             Preview a critical prompt
           </button>
         </div>
+      </Card>
+
+      <Card title="Downloadable models">
+        <p className="card__note">{modelNote || 'Asking the core…'}</p>
+        {modelError && <p className="scan__error">{modelError}</p>}
+        {models !== null && (
+          <ul className="datalist">
+            {models.map((m) => (
+              <li key={m.key}>
+                <span>
+                  {m.name}
+                  <em className="scopes__why">{m.enables}</em>
+                  {!m.installed && !m.fetchable && (
+                    <em className="plugin__warn">{m.reason}</em>
+                  )}
+                </span>
+                <span className="datalist__v">{m.sizeMb} MB</span>
+                {m.installed ? (
+                  <StatusBadge label="Installed" kind="ok" tone="accent" />
+                ) : m.fetchable ? (
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    onClick={async () => {
+                      setModelError('');
+                      const res = await fetchModel(m.key);
+                      if (!res.ok) setModelError(`${m.name} could not be downloaded.`);
+                      void loadModels();
+                    }}
+                  >
+                    Download {m.sizeMb} MB
+                  </button>
+                ) : (
+                  <StatusBadge label="Unavailable" kind="blocked" tone="muted" />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card title="Plugins">

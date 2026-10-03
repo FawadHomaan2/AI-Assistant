@@ -34,13 +34,15 @@
       "id": "jarvis-tray",
       "iconPath": "icons/32x32.png",
       "iconAsTemplate": false,
-      "tooltip": "Jarvis — AI assistant"
+      "tooltip": "Jarvis \u2014 AI assistant"
     },
     "withGlobalTauri": false
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -55,10 +57,21 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English"],
-        "displayLanguageSelector": false
+        "languages": [
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "installerHooks": "nsis/hooks.nsh"
       },
-      "webviewInstallMode": { "type": "downloadBootstrapper" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "externalBin": [
+      "binaries/jarvis-core"
+    ],
+    "resources": {
+      "../../../plugins/word-count": "plugins/word-count"
     }
   }
 }

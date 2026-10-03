@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from jarvis.browser.session import BrowserSession
-from jarvis.config import secrets
+from jarvis.config import models, secrets
 from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer
 from jarvis.governance.risk import MODE_AUTO_CEILING
@@ -475,6 +475,50 @@ async def disable_plugin(request: Request, name: str) -> dict[str, object]:
     )
     disabled: dict[str, object] = plugin.to_dict(ctx.policy.grants)
     return disabled
+
+
+@router.get("/models")
+async def list_models(request: Request) -> dict[str, object]:
+    """What Jarvis can download, what it costs, and what is already here."""
+    del request
+    return models.summary()
+
+
+@router.post("/models/{key}/fetch")
+async def fetch_model(request: Request, key: str) -> dict[str, object]:
+    """Download one model. Refuses anything it cannot verify."""
+    ctx = _ctx(request)
+    spec = models.BY_KEY.get(key)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"There is no model called {key!r}.")
+    path = models.fetch(key)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="model.fetch",
+            args_digest=AuditRepository.digest({"model": key, "mb": spec.size_mb}),
+            decision="allowed",
+        )
+    )
+    return {"installed": True, "path": str(path), "model": spec.to_dict()}
+
+
+@router.get("/models/{key}/verify")
+async def verify_model(request: Request, key: str) -> dict[str, object]:
+    del request
+    spec = models.BY_KEY.get(key)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"There is no model called {key!r}.")
+    ok, detail = models.verify_installed(spec)
+    return {"ok": ok, "detail": detail, "model": spec.to_dict()}
+
+
+@router.delete("/models/{key}")
+async def remove_model(request: Request, key: str) -> dict[str, object]:
+    del request
+    if key not in models.BY_KEY:
+        raise HTTPException(status_code=404, detail=f"There is no model called {key!r}.")
+    return {"removed": models.remove(key)}
 
 
 @router.get("/documents/formats")

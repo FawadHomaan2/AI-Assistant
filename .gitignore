@@ -46,3 +46,8 @@ Thumbs.db
 
 # Python core venv
 services/jarvis/.venv/
+
+# Build artefacts from scripts/build_core.py
+services/jarvis/dist-core/
+services/jarvis/build-core/
+apps/desktop/src-tauri/binaries/

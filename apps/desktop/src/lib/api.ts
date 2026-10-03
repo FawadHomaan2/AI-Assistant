@@ -395,6 +395,33 @@ export function setPluginEnabled(name: string, enabled: boolean): Promise<ApiRes
   });
 }
 
+export interface ModelRow {
+  key: string;
+  name: string;
+  enables: string;
+  sizeMb: number;
+  installed: boolean;
+  fetchable: boolean;
+  reason: string;
+}
+
+export function listModels(): Promise<
+  ApiResult<{
+    models: ModelRow[];
+    installedCount: number;
+    totalCount: number;
+    missingMb: number;
+    directory: string;
+    note: string;
+  }>
+> {
+  return request('/models');
+}
+
+export function fetchModel(key: string): Promise<ApiResult<{ installed: boolean }>> {
+  return request(`/models/${encodeURIComponent(key)}/fetch`, { method: 'POST' });
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

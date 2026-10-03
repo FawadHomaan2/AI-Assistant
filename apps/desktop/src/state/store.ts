@@ -39,7 +39,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 11;
+export const CURRENT_PHASE = 12;
 
 export interface QuickAction {
   id: string;

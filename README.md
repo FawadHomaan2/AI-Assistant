@@ -6,7 +6,7 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 11 of 12 — plugins work. Only packaging is left.**
+> **Current state: all 12 phases written. Phase 12's gate is not met.**
 > Jarvis works with your files, reads documents, starts installed programs,
 > manages windows, reports what is running, diagnoses why the machine is slow
 > by measuring it, browses the web — navigating, reading pages, and filling in
@@ -19,6 +19,13 @@ Say **"Jarvis"** — or press `Ctrl+Space`.
 > visit hosts on an allowlist — so a page that tells the model to go somewhere
 > else and paste what it just read is refused by the gate rather than by the
 > model's good judgement.
+>
+> Everything through Phase 11 runs and is tested. **The Windows installer has
+> never been built** — PyInstaller and the WebView2 shell do not cross-compile,
+> and this repository is authored in a Linux container. The packaging is
+> written and structurally tested; no `.exe` exists and none has been installed.
+> See [docs/PACKAGING.md](docs/PACKAGING.md) for the checklist that would have
+> to pass.
 >
 > Plugins run in their own process with no inherited credentials, and can only
 > do what their manifest declares, what you approved, and what Jarvis itself

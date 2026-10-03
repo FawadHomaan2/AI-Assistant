@@ -45,7 +45,7 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { id: 'security-scan', label: 'Security Scan', hint: 'Check Defender, firewall, startup items', availableIn: PHASE.security },
   { id: 'system-check', label: 'System Check', hint: 'Diagnose CPU, memory, disk and network', availableIn: PHASE.systemTools },
   { id: 'clean-downloads', label: 'Clean Downloads', hint: 'Sort and de-duplicate your Downloads folder', availableIn: PHASE.fileTools },
-  { id: 'voice', label: 'Voice Assistant', hint: 'Talk to Juno hands-free', availableIn: PHASE.voice },
+  { id: 'voice', label: 'Voice Assistant', hint: 'Talk to Jarvis hands-free', availableIn: PHASE.voice },
 ];
 
 /** The phase this build has actually shipped. Bump as phases land. */
@@ -115,7 +115,7 @@ export const useStore = create<AppState>((set, get) => ({
       id: 'welcome',
       role: 'assistant',
       content:
-        "I'm Juno. This build is Phase 1 — the desktop interface, system tray, " +
+        "I'm Jarvis. This build is Phase 1 — the desktop interface, system tray, " +
         'global shortcut and live machine stats are working. The AI core that ' +
         'understands instructions and controls your computer arrives in Phase 2, ' +
         "so I can't act on requests yet. Everything you see below reports real " +
@@ -140,7 +140,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (stopped) {
       pushMessage({
         role: 'system',
-        content: 'Emergency stop is active. Clear it from the banner before Juno does anything.',
+        content: 'Emergency stop is active. Clear it from the banner before Jarvis does anything.',
         notice: true,
       });
       return;
@@ -148,7 +148,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (mode === 'paused') {
       pushMessage({
         role: 'system',
-        content: 'Juno is paused, so nothing will execute. Switch to Guarded mode in the sidebar to continue.',
+        content: 'Jarvis is paused, so nothing will execute. Switch to Guarded mode in the sidebar to continue.',
         notice: true,
       });
       return;
@@ -173,7 +173,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   activity: [
-    { id: 'boot', at: Date.now(), summary: 'Juno started', status: 'succeeded', detail: 'Phase 1 build' },
+    { id: 'boot', at: Date.now(), summary: 'Jarvis started', status: 'succeeded', detail: 'Phase 1 build' },
   ],
   logActivity: (e) =>
     set((s) => ({ activity: [...s.activity, { ...e, id: nextId('act'), at: Date.now() }].slice(-MAX_ACTIVITY) })),
@@ -235,7 +235,7 @@ export const useStore = create<AppState>((set, get) => ({
       role: 'system',
       notice: true,
       content:
-        'Emergency stop activated. Juno is paused and any pending confirmation was dismissed. ' +
+        'Emergency stop activated. Jarvis is paused and any pending confirmation was dismissed. ' +
         `In this build there is no running automation to abort; cancelling in-flight tool execution lands in Phase ${PHASE.permissions}.`,
     });
     await shellEmergencyStop(); // best-effort; no-op without the shell

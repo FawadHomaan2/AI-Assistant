@@ -36,7 +36,7 @@ export function Composer() {
       <VoiceButton />
       <div className="composer__field">
         <label className="sr-only" htmlFor="composer-input">
-          Message Juno
+          Message Jarvis
         </label>
         <textarea
           id="composer-input"
@@ -44,7 +44,7 @@ export function Composer() {
           className="composer__input"
           rows={1}
           value={text}
-          placeholder={stopped ? 'Emergency stop is active — clear it to continue' : 'Ask Juno to do something…'}
+          placeholder={stopped ? 'Emergency stop is active — clear it to continue' : 'Ask Jarvis to do something…'}
           onChange={(e) => {
             setText(e.target.value);
             grow(e.target);

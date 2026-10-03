@@ -14,10 +14,16 @@ export function ChatView() {
         <Composer />
       </div>
       <aside className="chatview__rail" aria-label="Status and quick actions">
-        <SystemStatus />
-        <QuickActions />
-        <ActivityLog limit={8} />
-        <EmergencyStop />
+        <div className="chatview__rail-scroll">
+          <SystemStatus />
+          <QuickActions />
+          <ActivityLog limit={8} />
+        </div>
+        {/* Pinned outside the scroll area: the kill switch must never require
+            scrolling to reach. */}
+        <div className="chatview__rail-pin">
+          <EmergencyStop />
+        </div>
       </aside>
     </div>
   );

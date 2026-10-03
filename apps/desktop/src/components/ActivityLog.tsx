@@ -49,11 +49,7 @@ export function ActivityLog({ limit, showClear = false }: { limit?: number; show
               </div>
               <div className="activity__meta">
                 {e.controlLayer && <StatusBadge label={e.controlLayer} kind="info" tone="muted" />}
-                <StatusBadge
-                  label={e.status}
-                  kind={KIND[e.status]}
-                  tone={e.status === 'failed' ? 'accent' : 'neutral'}
-                />
+                <StatusBadge label={e.status} kind={KIND[e.status]} />
               </div>
             </li>
           ))}

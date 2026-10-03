@@ -117,3 +117,43 @@ describe('SystemStatus', () => {
     expect(screen.queryByText(/protected|secure|all clear/i)).toBeNull();
   });
 });
+
+describe('SystemStatus load bands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useStore.setState({ system: { state: 'loading' } });
+  });
+
+  const memAt = (pct: number) =>
+    snapshot({ memTotalBytes: 100, memUsedBytes: pct, cpuPercent: 1, diskUsedBytes: 1, diskTotalBytes: 100 });
+
+  it('marks normal load as ok', async () => {
+    getSystemSnapshot.mockResolvedValue(ok(memAt(50)));
+    const { container } = render(<SystemStatus />);
+    expect(await screen.findByText('50%')).toBeTruthy();
+    expect(container.querySelectorAll('.meter--saturated')).toHaveLength(0);
+    expect(container.querySelectorAll('.meter--busy')).toHaveLength(0);
+  });
+
+  it('flags busy and saturated separately', async () => {
+    getSystemSnapshot.mockResolvedValue(ok(memAt(80)));
+    const { container, unmount } = render(<SystemStatus />);
+    expect(await screen.findByText('80%')).toBeTruthy();
+    expect(container.querySelectorAll('.meter--busy')).toHaveLength(1);
+    unmount();
+
+    getSystemSnapshot.mockResolvedValue(ok(memAt(95)));
+    const second = render(<SystemStatus />);
+    expect(await screen.findByText('95%')).toBeTruthy();
+    expect(second.container.querySelectorAll('.meter--saturated')).toHaveLength(1);
+  });
+
+  // An unknown value must not be styled as though it were healthy *or* alarming.
+  it('does not band an unknown value', async () => {
+    getSystemSnapshot.mockResolvedValue(ok(snapshot({ cpuPercent: null })));
+    const { container } = render(<SystemStatus />);
+    await screen.findByText('231 processes');
+    const cpuMeter = container.querySelector('.meter');
+    expect(cpuMeter?.className).toContain('meter--ok');
+  });
+});

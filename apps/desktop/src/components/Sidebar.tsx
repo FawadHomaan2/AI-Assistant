@@ -30,7 +30,7 @@ export function Sidebar() {
       <div className="sidebar__brand">
         <span className="sidebar__mark" aria-hidden="true">J</span>
         <span className="sidebar__name">
-          Juno
+          Jarvis
           <small>Phase 1 · UI</small>
         </span>
       </div>

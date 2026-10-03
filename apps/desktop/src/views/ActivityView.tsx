@@ -5,7 +5,7 @@ export function ActivityView() {
   return (
     <Page
       title="Activity"
-      subtitle="Every action Juno takes is recorded here."
+      subtitle="Every action Jarvis takes is recorded here."
     >
       <Explainer>
         In this build the log records interface events only. From Phase 3 each row

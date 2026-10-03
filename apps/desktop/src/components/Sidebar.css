@@ -23,7 +23,7 @@
   place-items: center;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: var(--text-on-accent);
+  color: var(--on-accent);
   font-weight: 800;
   font-size: var(--fs-lg);
 }

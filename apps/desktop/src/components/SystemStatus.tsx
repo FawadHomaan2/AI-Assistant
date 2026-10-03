@@ -45,6 +45,18 @@ function explain(reason: Unavailable): string {
   }
 }
 
+/**
+ * Load bands for the meters. Deliberately conservative: high utilisation is
+ * normal on a working machine, so this flags "worth a look", never "broken",
+ * and the number itself is always shown next to it.
+ */
+function band(pct: number | null): 'ok' | 'busy' | 'saturated' {
+  if (pct === null) return 'ok';
+  if (pct >= 90) return 'saturated';
+  if (pct >= 75) return 'busy';
+  return 'ok';
+}
+
 /** A labelled meter. `value === null` renders an explicit em-dash, never 0%. */
 function Meter({
   icon,
@@ -59,7 +71,7 @@ function Meter({
 }) {
   const pct = value === null ? null : Math.round(value);
   return (
-    <div className="meter">
+    <div className={`meter meter--${band(pct)}`}>
       <div className="meter__top">
         <span className="meter__label">
           <Icon name={icon} size={13} />

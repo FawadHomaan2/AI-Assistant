@@ -44,7 +44,7 @@ export function SettingsView() {
   };
 
   return (
-    <Page title="Settings" subtitle={`Juno build — Phase ${CURRENT_PHASE}`}>
+    <Page title="Settings" subtitle={`Jarvis build — Phase ${CURRENT_PHASE}`}>
       <Explainer>
         API keys are never stored in configuration files and never written into
         this page. They go straight into Windows Credential Manager, and the
@@ -107,7 +107,7 @@ export function SettingsView() {
         </div>
         {shortcutNote && <p className="card__note">{shortcutNote}</p>}
         <p className="card__note">
-          Pressing this anywhere in Windows shows and focuses Juno. Emergency stop
+          Pressing this anywhere in Windows shows and focuses Jarvis. Emergency stop
           is separately bound to <code>Ctrl+Shift+Esc</code> inside the app.
         </p>
       </Card>
@@ -145,7 +145,7 @@ export function SettingsView() {
               requestConsent({
                 title: 'Move 37 files into 5 new folders',
                 summary:
-                  'Juno wants to sort your Downloads folder by file type, creating 5 folders and moving 37 files into them.',
+                  'Jarvis wants to sort your Downloads folder by file type, creating 5 folders and moving 37 files into them.',
                 risk: 'medium',
                 origin: '"Organize my Downloads folder" → plan step 5 of 6',
                 targets: [
@@ -170,7 +170,7 @@ export function SettingsView() {
               requestConsent({
                 title: 'Permanently delete 37 files',
                 summary:
-                  'This bypasses the Recycle Bin. The files cannot be recovered by Juno or by Windows.',
+                  'This bypasses the Recycle Bin. The files cannot be recovered by Jarvis or by Windows.',
                 risk: 'critical',
                 origin: '"Delete the duplicates for good" → plan step 3 of 3',
                 targets: [

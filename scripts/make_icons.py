@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generate Juno's application icons.
+"""Generate Jarvis's application icons.
 
 Pure stdlib (zlib + struct) so the icons are reproducible from source without
-an image library in the build environment. Palette is the project's two
-colours: brown background, marigold mark.
+an image library in the build environment. Colours come from the design tokens:
+deep navy surface, cyan mark.
 
 Usage:  python3 scripts/make_icons.py apps/desktop/src-tauri/icons
 """
@@ -14,8 +14,9 @@ import sys
 import zlib
 from pathlib import Path
 
-BROWN = (0x24, 0x1C, 0x17)
-MARIGOLD = (0xE7, 0xA3, 0x25)
+# Matches --surface-sunken / --accent in apps/desktop/src/styles/tokens.css
+NAVY = (0x0B, 0x0F, 0x17)
+CYAN = (0x38, 0xD6, 0xF0)
 
 # PNG sizes Tauri references, plus the sizes packed into the .ico.
 PNG_SIZES = {
@@ -84,10 +85,10 @@ def render(n: int) -> bytes:
                 rows.extend((0, 0, 0, 0))
                 continue
             mark = _coverage(x, y, n, _in_j)
-            # Composite marigold over brown, then the whole thing over nothing.
-            r = round(BROWN[0] * (1 - mark) + MARIGOLD[0] * mark)
-            g = round(BROWN[1] * (1 - mark) + MARIGOLD[1] * mark)
-            b = round(BROWN[2] * (1 - mark) + MARIGOLD[2] * mark)
+            # Composite the cyan mark over navy, then over transparency.
+            r = round(NAVY[0] * (1 - mark) + CYAN[0] * mark)
+            g = round(NAVY[1] * (1 - mark) + CYAN[1] * mark)
+            b = round(NAVY[2] * (1 - mark) + CYAN[2] * mark)
             rows.extend((r, g, b, round(255 * bg)))
     return bytes(rows)
 

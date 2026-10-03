@@ -12,11 +12,13 @@
   color: var(--text-muted);
   background: var(--surface-sunken);
 }
-.badge--accent {
-  color: var(--accent);
-  border-color: var(--accent-dim);
-  background: var(--accent-ghost);
-}
+
+.badge--accent  { color: var(--accent);  border-color: var(--accent-dim);  background: var(--accent-ghost); }
+.badge--success { color: var(--success); border-color: var(--success-dim); background: var(--success-ghost); }
+.badge--warning { color: var(--warning); border-color: var(--warning-dim); background: var(--warning-ghost); }
+.badge--danger  { color: var(--danger);  border-color: var(--danger-dim);  background: var(--danger-ghost); }
+.badge--notice  { color: var(--notice);  border-color: var(--notice-dim);  background: var(--notice-ghost); }
+
 .badge--muted {
   color: var(--text-subtle);
   border-color: transparent;

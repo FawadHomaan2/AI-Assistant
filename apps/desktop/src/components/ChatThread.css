@@ -46,16 +46,16 @@
 }
 .msg--user .msg__body {
   background: var(--accent);
-  color: var(--text-on-accent);
+  color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 500;
   border-bottom-right-radius: var(--radius-sm);
 }
 .msg--assistant .msg__body { border-bottom-left-radius: var(--radius-sm); }
 .msg--notice .msg__body {
-  background: var(--accent-ghost);
-  border-color: var(--accent-dim);
-  border-left: 3px solid var(--accent);
+  background: var(--notice-ghost);
+  border-color: var(--notice-dim);
+  border-left: 3px solid var(--notice);
   color: var(--text);
 }
 .msg--tool .msg__body { font-family: var(--font-mono); font-size: var(--fs-sm); }

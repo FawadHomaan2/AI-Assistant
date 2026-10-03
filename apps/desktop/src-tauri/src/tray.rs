@@ -28,13 +28,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
 
-    TrayIconBuilder::with_id("juno-tray")
+    TrayIconBuilder::with_id("jarvis-tray")
         .icon(
             app.default_window_icon()
                 .cloned()
                 .ok_or_else(|| tauri::Error::AssetNotFound("default window icon missing".into()))?,
         )
-        .tooltip("Juno — AI assistant")
+        .tooltip("Jarvis — AI assistant")
         .menu(&menu)
         // The menu must not also open on left click, or the click-to-show
         // gesture below never fires.
@@ -60,30 +60,30 @@ fn on_menu(app: &AppHandle, id: &str) {
         "open" => window::show_and_focus(app),
         "voice" => {
             window::show_and_focus(app);
-            let _ = app.emit("juno://navigate", "chat");
-            let _ = app.emit("juno://start-voice", ());
+            let _ = app.emit("jarvis://navigate", "chat");
+            let _ = app.emit("jarvis://start-voice", ());
         }
         "pause" => {
-            let _ = app.emit("juno://pause", ());
+            let _ = app.emit("jarvis://pause", ());
         }
         "security" => {
             window::show_and_focus(app);
-            let _ = app.emit("juno://navigate", "security");
+            let _ = app.emit("jarvis://navigate", "security");
         }
         "activity" => {
             window::show_and_focus(app);
-            let _ = app.emit("juno://navigate", "activity");
+            let _ = app.emit("jarvis://navigate", "activity");
         }
         "settings" => {
             window::show_and_focus(app);
-            let _ = app.emit("juno://navigate", "settings");
+            let _ = app.emit("jarvis://navigate", "settings");
         }
         "stop" => {
             // Latch the stop in the shell as well as the UI, so it holds even
             // if the webview is not currently showing.
             crate::estop::engage(app);
             window::show_and_focus(app);
-            let _ = app.emit("juno://emergency-stop", ());
+            let _ = app.emit("jarvis://emergency-stop", ());
         }
         "quit" => app.exit(0),
         other => log::warn!("unhandled tray menu id: {other}"),

@@ -61,7 +61,7 @@ describe('App shell', () => {
   it('renders navigation and the chat view by default', async () => {
     await renderApp();
     expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeTruthy();
-    expect(screen.getByLabelText('Message Juno')).toBeTruthy();
+    expect(screen.getByLabelText('Message Jarvis')).toBeTruthy();
   });
 
   it('navigates between all five views', async () => {
@@ -77,13 +77,13 @@ describe('App shell', () => {
       expect(screen.getByRole('heading', { level: 1, name: heading })).toBeTruthy();
     }
     await user.click(screen.getByRole('button', { name: 'Assistant' }));
-    expect(screen.getByLabelText('Message Juno')).toBeTruthy();
+    expect(screen.getByLabelText('Message Jarvis')).toBeTruthy();
   });
 
   it('sends on Enter and shows the not-implemented notice', async () => {
     const user = userEvent.setup();
     await renderApp();
-    await user.type(screen.getByLabelText('Message Juno'), 'Open Chrome{Enter}');
+    await user.type(screen.getByLabelText('Message Jarvis'), 'Open Chrome{Enter}');
     // Scope to the conversation: the activity log echoes the same text.
     const log = within(screen.getByRole('log', { name: /conversation/i }));
     expect(log.getByText('Open Chrome')).toBeTruthy();
@@ -93,7 +93,7 @@ describe('App shell', () => {
   it('Shift+Enter inserts a newline instead of sending', async () => {
     const user = userEvent.setup();
     await renderApp();
-    const input = screen.getByLabelText('Message Juno') as HTMLTextAreaElement;
+    const input = screen.getByLabelText('Message Jarvis') as HTMLTextAreaElement;
     await user.type(input, 'line one{Shift>}{Enter}{/Shift}line two');
     expect(input.value).toContain('\n');
     expect(useStore.getState().messages).toHaveLength(0);

@@ -1,3 +1,8 @@
+/*
+ * The kill switch is the one control that should look alarming. It is the only
+ * place `--danger` is used as a solid fill rather than a tint, which makes it
+ * visually unique in the whole UI — you cannot confuse it with anything else.
+ */
 .estop {
   display: inline-flex;
   align-items: center;
@@ -6,20 +11,25 @@
   width: 100%;
   padding: var(--sp-3);
   border-radius: var(--radius-sm);
-  border: 2px solid var(--accent);
-  background: var(--accent-ghost);
-  color: var(--accent);
+  border: 1px solid var(--danger-dim);
+  background: var(--danger-ghost);
+  color: var(--danger);
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: 800;
   letter-spacing: 0.06em;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.estop:hover:not(:disabled) { background: var(--accent); color: var(--text-on-accent); }
+.estop:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--on-danger);
+  border-color: var(--danger);
+}
 .estop.is-active {
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--danger);
+  color: var(--on-danger);
+  border-color: var(--danger);
   cursor: not-allowed;
 }
 
@@ -28,8 +38,8 @@
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--danger);
+  color: var(--on-danger);
   font-size: var(--fs-sm);
 }
 .estop-banner__text { flex: 1 1 auto; line-height: 1.45; }
@@ -40,12 +50,15 @@
   gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-3);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--brown-900);
-  background: var(--brown-900);
+  border: 1px solid transparent;
+  background: var(--surface-sunken);
   color: var(--text);
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
 }
-.estop-banner__resume:hover { background: var(--brown-700); }
+.estop-banner__resume:hover { background: var(--surface-raised); }
+.estop-banner__resume:focus-visible {
+  box-shadow: 0 0 0 2px var(--danger), 0 0 0 4px var(--text);
+}

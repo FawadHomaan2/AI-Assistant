@@ -1,4 +1,4 @@
-# Juno core (Python) — Phase 2
+# Jarvis core (Python) — Phase 2
 
 Empty by design. This directory holds the Python sidecar described in
 [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md): the FastAPI transport,

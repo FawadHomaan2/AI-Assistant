@@ -1,4 +1,4 @@
-//! Juno desktop shell.
+//! Jarvis desktop shell.
 //!
 //! Responsibilities kept in Rust rather than the webview:
 //!   * the window, the system tray and the single global shortcut
@@ -38,13 +38,13 @@ fn shell_info() -> ShellInfo {
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
-    // One Juno at a time: a second launch focuses the running instance instead
+    // One Jarvis at a time: a second launch focuses the running instance instead
     // of starting a rival tray icon and fighting over the global shortcut.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             window::show_and_focus(app);
-            let _ = app.emit("juno://activated", ());
+            let _ = app.emit("jarvis://activated", ());
         }));
         builder = builder.plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -81,7 +81,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|win, event| {
-            // Closing the window hides Juno to the tray. Exit is deliberate,
+            // Closing the window hides Jarvis to the tray. Exit is deliberate,
             // via the tray menu, so the assistant is not killed by a stray
             // click on the title bar.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -90,5 +90,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running Juno");
+        .expect("error while running Jarvis");
 }

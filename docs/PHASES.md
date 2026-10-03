@@ -52,7 +52,7 @@ log, `DocumentTool` (PDF/DOCX/XLSX/TXT/CSV read + summarise).
 *Gate:* a diagnostic report that cites measurements, not guesses.
 
 ## Phase 6 — Voice · planned
-VAD → faster-whisper → core → Piper, openWakeWord ("Juno"), push-to-talk,
+VAD → faster-whisper → core → Piper, openWakeWord ("Jarvis"), push-to-talk,
 barge-in, visible mic state.
 *Gate:* a spoken command executes end to end on real hardware.
 

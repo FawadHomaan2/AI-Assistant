@@ -1,10 +1,10 @@
-# Juno
+# Jarvis
 
 A local-first personal AI assistant for Windows. It understands natural
 language, controls the computer through native Windows APIs, and keeps you in
 control of anything sensitive or destructive.
 
-Say **"Juno"** — or press `Ctrl+Space`.
+Say **"Jarvis"** — or press `Ctrl+Space`.
 
 > **Current state: Phase 1 of 12 — the desktop interface.**
 > The shell, tray, global shortcut, live machine stats, consent dialog and
@@ -33,7 +33,7 @@ The short version:
   ship a Python runtime anyway.
 - **The model never executes anything.** It emits a typed proposal; a policy
   engine decides; you confirm when it matters. A web page or PDF that tries to
-  prompt-inject Juno can only *propose* harm, and hits the same gate you would.
+  prompt-inject Jarvis can only *propose* harm, and hits the same gate you would.
 - **Native APIs first.** A four-rung ladder — Win32/COM/WMI → UI Automation →
   keyboard synthesis → screen coordinates — and each action records which rung
   it used, so flaky automation is attributable rather than mysterious.
@@ -41,7 +41,7 @@ The short version:
   provider. Credentials, security findings and the audit log can never leave,
   enforced by type rather than by a setting.
 
-### What Juno will never do
+### What Jarvis will never do
 No keylogging, no credential harvesting, no covert screen or mic capture, no
 hidden persistence, no antivirus or UAC evasion, no touching other people's
 machines or accounts. These are absent by design, not switched off — see
@@ -49,13 +49,40 @@ ARCHITECTURE.md §6.
 
 ---
 
+## Design
+
+Dark-first, because this lives in your tray all day. Deep blue-neutral surfaces,
+a cyan accent, and four semantic colours that are used only where they mean
+something:
+
+| Token | Used for |
+|---|---|
+| `--accent` cyan | interactive elements, active nav, focus |
+| `--success` green | healthy state, approved actions |
+| `--warning` amber | 75–90% resource load, medium-risk confirmations |
+| `--danger` rose | emergency stop, high/critical confirmations, permanent actions |
+| `--notice` indigo | "not implemented" markers, informational badges |
+
+Two rules hold the system together:
+
+- **Colour never carries state alone.** Every badge, meter and dialog also has
+  an icon and a text label, so it stays readable in greyscale, for colour-blind
+  users, and in a screenshot.
+- **Contrast is verified, not assumed.** `scripts/check_contrast.py` checks every
+  foreground/background pair in both themes against WCAG AA and fails CI on a
+  regression.
+
+The consent dialog escalates with the risk tier — a medium-risk file move and a
+permanent delete are not supposed to look alike — and "this cannot be undone" is
+the only field in the whole dialog that gets its own colour.
+
 ## Repository layout
 
 ```
 apps/desktop/          Tauri 2 shell (Rust) + React/TypeScript UI
   src/                 components, views, state, bridge
   src-tauri/           window, tray, global shortcut, metrics, emergency stop
-services/juno/         Python core — Phase 2
+services/jarvis/         Python core — Phase 2
 packages/shared/       JSON Schemas generating both TS and Python types
 docs/                  ARCHITECTURE.md, PHASES.md
 scripts/make_icons.py  regenerates the app icons from source
@@ -112,8 +139,8 @@ scanner. Code signing is part of Phase 12; see ARCHITECTURE.md §16 and §18.
 
 | | |
 |---|---|
-| `Ctrl+Space` | show / hide Juno from anywhere (configurable in Settings) |
-| `Ctrl+Shift+Esc` | emergency stop, while Juno has focus¹ |
+| `Ctrl+Space` | show / hide Jarvis from anywhere (configurable in Settings) |
+| `Ctrl+Shift+Esc` | emergency stop, while Jarvis has focus¹ |
 | `Enter` | send · `Shift+Enter` newline |
 | `Esc` | cancel a confirmation prompt |
 

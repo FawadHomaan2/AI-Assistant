@@ -30,9 +30,9 @@ export function PrivacyView() {
   const clearActivity = useStore((s) => s.clearActivity);
 
   return (
-    <Page title="Privacy" subtitle="What Juno can reach, what it has stored, and how to revoke it.">
+    <Page title="Privacy" subtitle="What Jarvis can reach, what it has stored, and how to revoke it.">
       <Explainer>
-        Juno is local-first. Nothing leaves this computer unless you turn on a
+        Jarvis is local-first. Nothing leaves this computer unless you turn on a
         cloud provider, and credentials, security findings and the audit log are
         never eligible to leave at all — that is enforced in code, not by a
         setting you could mis-tune.
@@ -87,7 +87,7 @@ export function PrivacyView() {
           </li>
         </ul>
         <p className="card__note">
-          This build keeps messages and activity in memory only — closing Juno
+          This build keeps messages and activity in memory only — closing Jarvis
           discards them. Persistence to SQLite arrives with the core in Phase{' '}
           {PHASE.aiCore}, at which point these controls delete rows from disk.
         </p>

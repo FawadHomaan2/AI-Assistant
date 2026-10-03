@@ -308,8 +308,8 @@ describe('store: voice', () => {
 describe('phase gating', () => {
   beforeEach(reset);
 
-  it('shipped phase matches the browser phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.browser);
+  it('shipped phase matches the memory phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.memory);
   });
 
   // An action that claims to be available must have something behind it.
@@ -532,5 +532,46 @@ describe('store: tool events', () => {
     });
     expect(useStore.getState().messages).toHaveLength(0);
     expect(useStore.getState().activity.at(-1)?.summary).toContain('Planned 1 step');
+  });
+});
+
+describe('memory events', () => {
+  beforeEach(reset);
+
+  const handle = (e: Parameters<ReturnType<typeof useStore.getState>['handleEvent']>[0]) =>
+    useStore.getState().handleEvent(e);
+
+  it('a recalled belief is logged, not silently used', () => {
+    handle({
+      type: 'memory.recalled',
+      memories: [
+        { id: 'mem_1', key: 'app.open.pdf', sentence: 'app.open.pdf: Acrobat', confidence: 0.9 },
+      ],
+    });
+    const entry = useStore.getState().activity.at(0);
+    expect(entry?.summary).toContain('Recalled 1');
+    expect(entry?.detail).toContain('Acrobat');
+    // Recall is not an answer, so it must not appear as a message.
+    expect(useStore.getState().messages.at(-1)?.role).not.toBe('system');
+  });
+
+  it('a learned preference is confirmed and ends the turn', () => {
+    useStore.setState({ busy: true });
+    handle({
+      type: 'memory.learned',
+      message: "I'll open pdf files in Acrobat.",
+      memories: [
+        { id: 'mem_1', key: 'app.open.pdf', sentence: 'app.open.pdf: Acrobat', confidence: 0.9 },
+      ],
+    });
+    const last = useStore.getState().messages.at(-1);
+    expect(last?.role).toBe('system');
+    expect(last?.content).toContain('Acrobat');
+    expect(useStore.getState().busy).toBe(false);
+  });
+
+  it('forgetting nothing says so rather than claiming success', () => {
+    handle({ type: 'memory.forgotten', message: 'I had nothing stored that matches that.', removed: [] });
+    expect(useStore.getState().activity.at(0)?.detail).toBe('nothing matched');
   });
 });

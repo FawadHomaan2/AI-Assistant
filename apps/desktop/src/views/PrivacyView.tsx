@@ -1,8 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Page, Explainer, Card, NotImplemented } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useStore, PHASE } from '@/state/store';
-import { browserStatus, type BrowserStatus } from '@/lib/api';
+import {
+  browserStatus,
+  memoryClear,
+  memoryEdit,
+  memoryForget,
+  memoryList,
+  type BrowserStatus,
+  type MemoryRow,
+  type MemoryStats,
+} from '@/lib/api';
 import './views.css';
 
 /** Scopes granted by default on install (ARCHITECTURE.md §7, axis 2). */
@@ -34,6 +43,9 @@ export function PrivacyView() {
   // file is editable, and a dashboard that shows the wrong allowlist is worse
   // than one that shows none.
   const [browser, setBrowser] = useState<BrowserStatus | null>(null);
+  const [memories, setMemories] = useState<MemoryRow[] | null>(null);
+  const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
+  const [memoryQuery, setMemoryQuery] = useState('');
 
   useEffect(() => {
     let live = true;
@@ -44,6 +56,23 @@ export function PrivacyView() {
       live = false;
     };
   }, []);
+
+  const loadMemory = useCallback(async (query: string) => {
+    const res = await memoryList(query);
+    if (!res.ok) {
+      // An empty list and a core that cannot be reached look identical to a
+      // reader, so the failure is shown rather than rendered as "nothing".
+      setMemories([]);
+      setMemoryStats(null);
+      return;
+    }
+    setMemories(res.value.memories);
+    setMemoryStats(res.value.stats);
+  }, []);
+
+  useEffect(() => {
+    void loadMemory(memoryQuery);
+  }, [loadMemory, memoryQuery]);
 
   return (
     <Page title="Privacy" subtitle="What Jarvis can reach, what it has stored, and how to revoke it.">
@@ -73,6 +102,100 @@ export function PrivacyView() {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card title="What Jarvis has learned">
+        <p className="card__note">
+          Everything Jarvis believes about you, where it came from, and how sure
+          it is. A <em>candidate</em> has been noticed but is not acted on —
+          Jarvis needs {memoryStats?.promotionThreshold ?? 3} consistent
+          observations, or for you to say it outright, before it changes how it
+          behaves. Deleting here is permanent; there is no archive.
+        </p>
+        <div className="memory__controls">
+          <input
+            type="search"
+            className="memory__search"
+            placeholder="Search what Jarvis remembers"
+            aria-label="Search memory"
+            value={memoryQuery}
+            onChange={(e) => setMemoryQuery(e.target.value)}
+          />
+          <button
+            type="button"
+            className="linkbtn"
+            disabled={!memories || memories.length === 0}
+            onClick={async () => {
+              await memoryClear();
+              void loadMemory(memoryQuery);
+            }}
+          >
+            Forget everything
+          </button>
+        </div>
+        {memories === null ? (
+          <p className="card__note">Asking the core…</p>
+        ) : memories.length === 0 ? (
+          <p className="card__note">
+            {memoryQuery
+              ? `Nothing stored matches “${memoryQuery}”.`
+              : 'Nothing stored yet. Tell Jarvis something like "always open PDFs in Acrobat".'}
+          </p>
+        ) : (
+          <ul className="memory">
+            {memories.map((m) => (
+              <li key={m.id} className="memory__row">
+                <div className="memory__main">
+                  <code className="memory__key">{m.key}</code>
+                  <span className="memory__value">{String(m.value)}</span>
+                </div>
+                <div className="memory__meta">
+                  <StatusBadge
+                    label={m.status === 'active' ? 'Active' : 'Candidate'}
+                    kind={m.status === 'active' ? 'ok' : 'pending'}
+                    tone={m.status === 'active' ? 'accent' : 'muted'}
+                    title={
+                      m.status === 'active'
+                        ? 'Jarvis acts on this'
+                        : `Seen ${m.observationCount} time(s); not acted on yet`
+                    }
+                  />
+                  <span className="memory__note">
+                    {m.source === 'stated' ? 'you said this' : 'Jarvis noticed this'} ·{' '}
+                    {Math.round(m.confidence * 100)}% sure
+                  </span>
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    aria-label={`Pin ${m.key}`}
+                    onClick={async () => {
+                      await memoryEdit(m.id, { pinned: !m.pinned });
+                      void loadMemory(memoryQuery);
+                    }}
+                  >
+                    {m.pinned ? 'Unpin' : 'Pin'}
+                  </button>
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    aria-label={`Forget ${m.key}`}
+                    onClick={async () => {
+                      await memoryForget(m.id);
+                      void loadMemory(memoryQuery);
+                    }}
+                  >
+                    Forget
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {memoryStats && (
+          <p className="card__note">
+            {memoryStats.total} stored. {memoryStats.embedderDetail}
+          </p>
+        )}
       </Card>
 
       <Card title="Web browsing">
@@ -148,8 +271,8 @@ export function PrivacyView() {
           </li>
           <li>
             <span>Learned memory</span>
-            <span className="datalist__v">—</span>
-            <span className="datalist__note">Phase {PHASE.memory}</span>
+            <span className="datalist__v">{memoryStats?.total ?? '—'}</span>
+            <span className="datalist__note">listed above</span>
           </li>
           <li>
             <span>Indexed documents</span>
@@ -171,7 +294,6 @@ export function PrivacyView() {
           'Per-folder allow and deny lists with a path jail',
           'Per-tool enable and disable switches',
           'Exactly which data categories a cloud provider has received',
-          'Searchable, editable, deletable learned memory',
           'Microphone, cloud AI, file, browser and terminal master switches',
           'Pause all automation',
         ]}

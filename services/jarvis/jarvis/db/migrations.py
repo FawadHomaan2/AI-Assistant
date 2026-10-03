@@ -61,5 +61,52 @@ CREATE TABLE preferences (
 );
 """
 
-ALL: tuple[tuple[int, str], ...] = ((1, _0001_INITIAL),)
+# Phase 8: durable memory. `preferences` already exists from migration 1 and is
+# left alone — it holds settings the user set directly, which is a different
+# thing from something Jarvis worked out and must be able to be wrong about.
+_0002_MEMORY = """
+CREATE TABLE memory (
+    id                TEXT PRIMARY KEY,
+    tier              TEXT NOT NULL
+                      CHECK (tier IN ('episodic','semantic','procedural')),
+    key               TEXT NOT NULL,
+    value_json        TEXT NOT NULL,
+    -- 0..1. Written memory starts low and rises with repeated observation; an
+    -- explicit statement starts high. Never 1.0: nothing learned is certain.
+    confidence        REAL NOT NULL DEFAULT 0.3
+                      CHECK (confidence >= 0.0 AND confidence <= 1.0),
+    observation_count INTEGER NOT NULL DEFAULT 1,
+    -- 'stated' means the user said it; 'observed' means Jarvis inferred it.
+    -- The dashboard shows which, because they deserve different trust.
+    source            TEXT NOT NULL DEFAULT 'observed'
+                      CHECK (source IN ('stated','observed')),
+    source_turn_id    TEXT REFERENCES turns(id) ON DELETE SET NULL,
+    session_id        TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    last_used_at      TEXT,
+    use_count         INTEGER NOT NULL DEFAULT 0,
+    pinned            INTEGER NOT NULL DEFAULT 0,
+    -- A candidate has been seen, but not often enough to act on. Promotion to
+    -- 'active' needs an explicit statement or three consistent observations.
+    status            TEXT NOT NULL DEFAULT 'candidate'
+                      CHECK (status IN ('candidate','active','retired'))
+);
+
+-- One row per (tier, key): a preference is a fact about the user, not a log.
+CREATE UNIQUE INDEX idx_memory_key ON memory(tier, key);
+CREATE INDEX idx_memory_status ON memory(status, tier);
+
+CREATE TABLE memory_vec (
+    memory_id TEXT PRIMARY KEY REFERENCES memory(id) ON DELETE CASCADE,
+    -- Which embedder produced this vector, and how long it is. Vectors from
+    -- different models are not comparable, so a model change invalidates them
+    -- rather than silently mixing two coordinate systems.
+    embedder  TEXT NOT NULL,
+    dimension INTEGER NOT NULL,
+    embedding BLOB NOT NULL
+);
+"""
+
+ALL: tuple[tuple[int, str], ...] = ((1, _0001_INITIAL), (2, _0002_MEMORY))
 LATEST = max(version for version, _ in ALL)

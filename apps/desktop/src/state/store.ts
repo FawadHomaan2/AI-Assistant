@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 7;
+export const CURRENT_PHASE = 8;
 
 export interface QuickAction {
   id: string;
@@ -263,6 +263,39 @@ export const useStore = create<AppState>((set, get) => {
           status: 'pending',
           detail: `${event.affectedCount} item(s) · ${event.risk} risk`,
         });
+        break;
+      }
+
+      case 'memory.recalled': {
+        // Shown rather than silent: a belief that shapes an answer must be
+        // visible, or Jarvis behaves oddly for reasons nobody can trace.
+        state.logActivity({
+          summary: `Recalled ${event.memories.length} thing(s) about you`,
+          status: 'succeeded',
+          detail: event.memories.map((m) => m.sentence).join('; '),
+        });
+        break;
+      }
+
+      case 'memory.learned': {
+        state.pushMessage({ role: 'system', content: event.message, notice: true });
+        state.logActivity({
+          summary: 'Learned a preference',
+          status: 'succeeded',
+          detail: event.memories.map((m) => m.sentence).join('; '),
+        });
+        set({ busy: false, streamingId: null });
+        break;
+      }
+
+      case 'memory.forgotten': {
+        state.pushMessage({ role: 'system', content: event.message, notice: true });
+        state.logActivity({
+          summary: `Forgot ${event.removed.length} thing(s)`,
+          status: 'succeeded',
+          detail: event.removed.map((m) => m.sentence).join('; ') || 'nothing matched',
+        });
+        set({ busy: false, streamingId: null });
         break;
       }
 

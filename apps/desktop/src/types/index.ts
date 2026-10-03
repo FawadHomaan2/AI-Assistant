@@ -164,6 +164,20 @@ export type AgentEvent =
       blocked?: boolean;
       session_id?: string;
     }
+  | {
+      type: 'memory.recalled';
+      memories: { id: string; key: string; sentence: string; confidence: number }[];
+    }
+  | {
+      type: 'memory.learned';
+      message: string;
+      memories: { id: string; key: string; sentence: string; confidence: number }[];
+    }
+  | {
+      type: 'memory.forgotten';
+      message: string;
+      removed: { id: string; key: string; sentence: string }[];
+    }
   | { type: 'error'; code: string; message: string; provider?: string; session_id?: string }
   | {
       type: 'turn.end';

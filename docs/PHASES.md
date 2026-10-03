@@ -327,12 +327,81 @@ actually loaded rather than an intended default.
 
 *Gate:* navigate + extract + a confirmation-gated form submission — **met**.
 
-## Phase 8 — Memory · next
-Four tiers, local embeddings, retrieval, preference learning, Privacy Dashboard
-CRUD over stored memory.
-*Gate:* a preference stated once is recalled in a later session.
+## Phase 8 — Memory · **done**
 
-## Phase 9 — Security Center · planned
+Shipped: three durable tiers, local embeddings, retrieval, preference learning
+from both statements and observations, and a Privacy dashboard that lists,
+searches, pins, edits and deletes everything Jarvis believes.
+
+**Promotion needs evidence.** Something Jarvis merely *noticed* is a candidate
+and is never acted on. It becomes active after three consistent observations,
+or at once if you stated it. Open a PDF in Chrome one time and Jarvis must not
+decide that is your preference — so the candidate state is visible in the
+dashboard, and candidates are excluded from what the model sees.
+
+**A contradiction resets the count rather than averaging it.** Use Acrobat three
+times, then Chrome once, and the honest conclusion is "I no longer know", not
+"0.5 confidence in Acrobat". Counting restarts from the new behaviour.
+
+**Nothing is ever certain.** Confidence is capped below 1.0 even for something
+you said outright, because people change their minds and every memory must stay
+correctable.
+
+**The eager-learning failure is the one guarded hardest.** "Open the pdf in
+acrobat" is a request; "always open pdfs in acrobat" is a preference. Only the
+second is learned. A wrong memory persists and silently shapes every later
+turn, so extraction errs towards taking nothing — an unrecognised phrasing
+becomes an ordinary conversation turn, and the user can always say "remember
+that ...". A few phrasings are unambiguous on their own ("call me Fawad") and
+skip that gate, because otherwise the way people actually say it is the way
+that does not work.
+
+**Recalled memories are labelled as beliefs, not instructions.** They go to the
+model in their own block that says they may be out of date and that the user's
+current message wins. Without that, a months-old preference starts overriding
+what the person just said.
+
+**Secrets are stripped before writing.** Memory is both long-lived and derived
+from free text, which makes it the worst possible place for a pasted API key.
+
+**Search is honest about what it is.** The semantic model (MiniLM, ~90 MB ONNX)
+is not downloaded, so retrieval uses a hashed bag-of-words — real matching on
+shared words, not meaning. The dashboard says exactly that rather than calling
+it semantic search. A missing model raises instead of returning a zero vector,
+because zeros would make every memory equally similar to every query and the
+failure would look like bad recall. Each stored vector records which embedder
+produced it; vectors from another model are skipped rather than compared, since
+a cosine between two coordinate systems is a confident number that means
+nothing.
+
+**Relevance and ranking are separate.** A memory must match the query to be
+returned at all; confidence and pinning then order the matches. Letting
+confidence contribute to matching returned a firmly-held belief about something
+else for any query — found by a test, and fixed.
+
+**Verified on Linux (69 tests):** promotion at three observations and not
+before; contradiction resetting the count; a statement overriding observations;
+confidence never reaching 1.0; one row per key rather than a log; candidates
+never recalled; unrelated memories never recalled; vectors from another
+embedder ignored and reindexing restoring search; deletion removing the vector
+too; "forget that ..." reporting what went and removing nothing when nothing
+matches; secrets stripped; provenance recorded; and — the important negatives —
+six ordinary requests that must teach nothing.
+
+Also driven through the built interface against a live core: three preferences
+stated, the page reloaded into a fresh session, and "what should I open a pdf
+with?" recalling `app.open.pdf: Acrobat` in the activity log, with the
+dashboard listing all three by source and confidence and "forget that I prefer
+brief answers" removing exactly one.
+
+**Not wired:** the MiniLM ONNX model is not downloaded or bundled, so semantic
+similarity is unavailable and word matching stands in. The procedural tier
+exists in the schema and the store but nothing promotes successful plans into
+it yet — that needs the model-driven planner, not a rule-based one.
+
+*Gate:* a preference stated once is recalled in a later session — **met**.
+
+## Phase 9 — Security Center · next
 Defender, firewall, startup items, network connections, USB history, updates,
 BitLocker, event log; baseline learning; four-level classification.
 *Gate:* findings carry evidence and the correct classification — unfamiliar is

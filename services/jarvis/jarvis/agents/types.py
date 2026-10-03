@@ -48,6 +48,11 @@ class EventType(StrEnum):
     TOOL_PLANNED = "tool.planned"
     TOOL_RESULT = "tool.result"
     CONSENT_REQUEST = "consent.request"
+    # Phase 8: memory. Emitted whenever something is recalled, learned or
+    # forgotten, so a belief that shapes an answer is never invisible.
+    MEMORY_RECALLED = "memory.recalled"
+    MEMORY_LEARNED = "memory.learned"
+    MEMORY_FORGOTTEN = "memory.forgotten"
 
 
 @dataclass

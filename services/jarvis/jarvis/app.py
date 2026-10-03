@@ -20,6 +20,8 @@ from jarvis.governance.estop import EmergencyStop
 from jarvis.governance.pathjail import PathJail
 from jarvis.governance.policy import Policy
 from jarvis.governance.scopes import ScopeGrants
+from jarvis.memory.embeddings import best_available
+from jarvis.memory.store import MemoryStore
 from jarvis.platform_ import backends as os_backends
 from jarvis.tools.applications import ApplicationTool
 from jarvis.tools.browser import BrowserTool
@@ -68,6 +70,7 @@ class Context:
     executor: Executor
     voice: VoicePipeline
     browser: BrowserSession
+    memory: MemoryStore
     version: str = VERSION
 
 
@@ -118,6 +121,10 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
 
     executor = Executor(registry, policy, consent, audit, estop)
 
+    # The strongest embedder this installation can actually run. Word matching
+    # when the semantic model is not downloaded, and the dashboard says which.
+    memory = MemoryStore(db, best_available())
+
     # The voice pipeline is constructed either way; it reports what it is
     # missing rather than being absent, so the interface can offer the download.
     voice = VoicePipeline(
@@ -129,7 +136,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
             push_to_talk=settings.voice.push_to_talk,
         ),
     )
-    orchestrator = Orchestrator(gateway, sessions, turns, audit, estop, executor)
+    orchestrator = Orchestrator(gateway, sessions, turns, audit, estop, executor, memory)
 
     return Context(
         settings=settings,
@@ -148,6 +155,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         executor=executor,
         voice=voice,
         browser=browser,
+        memory=memory,
     )
 
 

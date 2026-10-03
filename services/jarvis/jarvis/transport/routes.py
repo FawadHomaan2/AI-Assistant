@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 
 from jarvis.browser.session import BrowserSession
 from jarvis.config import secrets
+from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer
 from jarvis.governance.scopes import Scope
 from jarvis.tools.documents import DocumentTool
@@ -189,6 +190,82 @@ async def browser_status(request: Request) -> dict[str, object]:
         "searchEngine": ctx.settings.browser.search_engine,
         "ownProfile": True,
     }
+
+
+@router.get("/memory")
+async def memory_list(
+    request: Request, tier: str = "", status: str = "", q: str = "", limit: int = 200
+) -> dict[str, object]:
+    """Everything Jarvis has learned, listed and searchable.
+
+    Candidates are included deliberately. Seeing what Jarvis is *about* to
+    believe, before it acts on it, is the point of the dashboard.
+    """
+    ctx = _ctx(request)
+    store = ctx.memory
+    if q:
+        found = store.search(q, limit=limit, include_candidates=True)
+    else:
+        found = store.list_all(tier=tier or None, status=status or None, limit=limit)
+    return {"memories": [m.to_dict() for m in found], "stats": store.stats()}
+
+
+@router.patch("/memory/{memory_id}")
+async def memory_update(request: Request, memory_id: str) -> dict[str, object]:
+    """Correct a memory. An edit counts as you stating it, so it becomes active."""
+    ctx = _ctx(request)
+    body = await request.json()
+    if "value" in body:
+        memory = ctx.memory.set_value(memory_id, body["value"])
+    elif "pinned" in body:
+        memory = ctx.memory.pin(memory_id, bool(body["pinned"]))
+    else:
+        raise HTTPException(status_code=422, detail="Send either `value` or `pinned`.")
+    if memory is None:
+        raise HTTPException(status_code=404, detail=f"No memory with id {memory_id!r}.")
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="memory.edit",
+            args_digest=AuditRepository.digest({"id": memory_id}),
+            decision="allowed",
+        )
+    )
+    result: dict[str, object] = memory.to_dict()
+    return result
+
+
+@router.delete("/memory/{memory_id}")
+async def memory_delete(request: Request, memory_id: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    removed = ctx.memory.forget(memory_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"No memory with id {memory_id!r}.")
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="memory.forget",
+            args_digest=AuditRepository.digest({"id": memory_id}),
+            decision="allowed",
+        )
+    )
+    return {"deleted": memory_id}
+
+
+@router.delete("/memory")
+async def memory_clear(request: Request, tier: str = "") -> dict[str, object]:
+    """Delete everything, or one tier. Gone means gone — there is no archive."""
+    ctx = _ctx(request)
+    removed = ctx.memory.clear(tier or None)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="memory.clear",
+            args_digest=AuditRepository.digest({"tier": tier, "removed": removed}),
+            decision="allowed",
+        )
+    )
+    return {"deleted": removed, "tier": tier or "all"}
 
 
 @router.get("/documents/formats")

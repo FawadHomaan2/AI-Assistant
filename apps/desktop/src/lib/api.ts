@@ -198,6 +198,55 @@ export async function browserStatus(): Promise<ApiResult<BrowserStatus>> {
   };
 }
 
+export interface MemoryRow {
+  id: string;
+  tier: string;
+  key: string;
+  value: unknown;
+  confidence: number;
+  observationCount: number;
+  source: 'stated' | 'observed';
+  status: 'candidate' | 'active' | 'retired';
+  pinned: boolean;
+  useCount: number;
+  updatedAt: string;
+  sentence: string;
+}
+
+export interface MemoryStats {
+  total: number;
+  embedder: string;
+  embedderDetail: string;
+  semantic: boolean;
+  promotionThreshold: number;
+}
+
+export async function memoryList(
+  query = '',
+): Promise<ApiResult<{ memories: MemoryRow[]; stats: MemoryStats }>> {
+  const suffix = query ? `?q=${encodeURIComponent(query)}` : '';
+  return request(`/memory${suffix}`);
+}
+
+export function memoryForget(id: string): Promise<ApiResult<{ deleted: string }>> {
+  return request(`/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function memoryClear(): Promise<ApiResult<{ deleted: number }>> {
+  return request('/memory', { method: 'DELETE' });
+}
+
+export function memoryEdit(
+  id: string,
+  patch: { value?: unknown; pinned?: boolean },
+): Promise<ApiResult<MemoryRow>> {
+  return request(`/memory/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

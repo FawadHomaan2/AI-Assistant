@@ -166,6 +166,11 @@ _PROCESS_QUESTION = re.compile(
 _MEMORY = (
     "remember that",
     "remember this",
+    "remember my",
+    "remember to",
+    "remember i ",
+    "call me ",
+    "my name is",
     "don't forget",
     "dont forget",
     "from now on",

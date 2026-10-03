@@ -123,6 +123,59 @@
   .scopes__what { grid-column: 1 / -1; }
 }
 
+/* ── Learned memory (Privacy) ─────────────────────────────────────────── */
+.memory__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.memory__search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.memory__search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.memory { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.memory__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.memory__row:last-child { border-bottom: 0; }
+.memory__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.memory__key { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent); }
+.memory__value { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.memory__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+}
+@media (max-width: 680px) {
+  .memory__meta { width: 100%; }
+}
+
 /* ── Key/value list ──────────────────────────────────────────────────── */
 .datalist { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
 .datalist li {

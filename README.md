@@ -6,9 +6,10 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 4 of 12 — files, documents, apps and processes.**
+> **Current state: Phase 5 of 12 — files, documents, apps, processes, system.**
 > Jarvis works with your files, reads documents, starts installed programs,
-> manages windows, and tells you what is running and what is using the CPU.
+> manages windows, reports what is running, and diagnoses why the machine is
+> slow by measuring it.
 > Every action goes through a path jail, a policy engine and a confirmation
 > gate, and lands in a tamper-evident audit log.
 >
@@ -166,6 +167,9 @@ find duplicate files in downloads
 read budget.csv
 what programs are running
 what is using my cpu
+why is my computer slow              → measured findings, each with its threshold
+is my internet working               → separates DNS failure from routing failure
+how much disk space do I have
 open chrome                           → resolved against installed software
 close notepad                         → posts WM_CLOSE so it can prompt to save
 delete report.pdf from downloads      → refused: fs.delete isn't granted by default
@@ -189,7 +193,7 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 
 # Python core
 cd services/jarvis
-.venv/bin/python -m pytest -q      # 442 tests, incl. 52 path-jail escape attempts
+.venv/bin/python -m pytest -q      # 496 tests, incl. 52 path-jail escape attempts
 .venv/bin/ruff check . && .venv/bin/mypy jarvis    # strict
 
 # Palette

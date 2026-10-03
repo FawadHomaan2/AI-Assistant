@@ -21,10 +21,15 @@ from jarvis.governance.policy import Policy
 from jarvis.governance.scopes import ScopeGrants
 from jarvis.platform_ import backends as os_backends
 from jarvis.tools.applications import ApplicationTool
+from jarvis.tools.capture import ClipboardTool, NotificationTool, ScreenshotTool
+from jarvis.tools.diagnostics_tool import DiagnosticsTool
 from jarvis.tools.documents import DocumentTool
 from jarvis.tools.filesystem import FileSystemTool
+from jarvis.tools.network import NetworkTool
+from jarvis.tools.powershell import PowerShellTool
 from jarvis.tools.processes import ProcessTool
 from jarvis.tools.registry import ToolRegistry
+from jarvis.tools.systeminfo import SystemInfoTool
 from jarvis.tools.windows_tool import WindowTool
 from jarvis.transport import routes
 from jarvis.transport.auth import AuthMiddleware
@@ -78,6 +83,13 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     registry.register(ProcessTool(adapters.processes))
     registry.register(ApplicationTool(adapters.apps, adapters.processes))
     registry.register(WindowTool(adapters.windows))
+    registry.register(SystemInfoTool())
+    registry.register(NetworkTool())
+    registry.register(DiagnosticsTool(adapters.processes))
+    registry.register(ScreenshotTool(jail))
+    registry.register(ClipboardTool())
+    registry.register(NotificationTool())
+    registry.register(PowerShellTool())
 
     executor = Executor(registry, policy, consent, audit, estop)
     orchestrator = Orchestrator(gateway, sessions, turns, audit, estop, executor)

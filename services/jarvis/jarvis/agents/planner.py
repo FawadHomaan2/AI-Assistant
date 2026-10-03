@@ -126,6 +126,36 @@ _PROCESS_TOP = re.compile(
     re.IGNORECASE,
 )
 
+#: "why is my computer slow".
+_SLOW = re.compile(
+    r"\b(?:why\s+(?:is|are|'s)\s+(?:my|this|the)\b.{0,24}?\b"
+    r"(?:slow|sluggish|laggy|lagging|freezing|stuttering)"
+    r"|(?:computer|pc|laptop|machine)\s+(?:is\s+)?(?:so\s+)?(?:slow|sluggish|laggy)"
+    r"|what(?:'s| is)\s+(?:making|slowing)\b"
+    r"|diagnose\b|run\s+a?\s*diagnostic)",
+    re.IGNORECASE,
+)
+
+#: "is my internet working", "why can't I connect".
+_CONNECTIVITY = re.compile(
+    r"\b(?:internet|wi-?fi|network|connection)\b.{0,24}?\b"
+    r"(?:working|down|up|broken|connected|problem)"
+    r"|\b(?:can'?t|cannot)\s+(?:connect|get online|reach)",
+    re.IGNORECASE,
+)
+
+#: "take a screenshot".
+_SCREENSHOT = re.compile(
+    r"\b(?:take|grab|capture|get)\s+(?:a\s+)?screen\s?shot|\bscreenshot\b", re.IGNORECASE
+)
+
+#: "how much disk space do I have", "what's my battery at".
+_SYSTEM_INFO = re.compile(
+    r"\b(?:how much|what(?:'s| is)|check(?: my)?|show(?: me)?)\b.{0,20}?"
+    r"\b(?P<topic>disk|disks|storage|space|memory|ram|cpu|processor|battery|uptime)\b",
+    re.IGNORECASE,
+)
+
 #: "close notepad", "minimise word".
 _WINDOW_ACTION = re.compile(
     r"\b(?P<action>close|quit|minimi[sz]e|maximi[sz]e|focus|switch to|bring up)\b"
@@ -154,22 +184,18 @@ _READ_PATH = re.compile(
 #: name the right missing capability instead of talking about folders.
 _OTHER_DOMAINS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
-        re.compile(r"\b(screenshot|screen shot|capture the screen)\b", re.IGNORECASE),
-        "Screenshots arrive in Phase 5.",
-    ),
-    (
         re.compile(
-            r"\b(why is|why's).{0,20}\b(slow|sluggish|freezing|lagging)\b|"
-            r"\b(disk space|battery|temperature|drivers?|startup programs)\b",
+            r"\b(drivers?|startup programs|startup apps|startup items|windows update)\b",
             re.IGNORECASE,
         ),
-        "Full diagnostics — disk, startup programs, drivers and the evidence "
-        'behind "why is my PC slow" — arrive in Phase 5. I can already tell you '
-        "what is running and what is using the CPU.",
+        "Driver, startup-item and Windows Update checks arrive with the Security "
+        "Center in Phase 9. I can already measure CPU, memory, disks and uptime, "
+        "and tell you what is running.",
     ),
     (
         re.compile(r"\b(wi-?fi|bluetooth|volume|brightness|turn (on|off))\b", re.IGNORECASE),
-        "Changing system settings arrives in Phase 5.",
+        "Changing Windows settings is not built yet — Jarvis can read system "
+        "state but not reconfigure it.",
     ),
     (
         re.compile(r"\b(browse|website|web ?site|google|search online|the web)\b", re.IGNORECASE),
@@ -237,6 +263,31 @@ def plan(message: str) -> Plan:
             args["modified_within_days"] = 31
         return Plan([Step("filesystem", args, f"search {folder} for {pattern}")])
 
+    if _SLOW.search(text):
+        return Plan(
+            [
+                Step(
+                    "diagnostics",
+                    {"operation": "performance"},
+                    "measure CPU, memory, disks and uptime, and report what crossed a threshold",
+                )
+            ]
+        )
+
+    if _CONNECTIVITY.search(text):
+        return Plan(
+            [
+                Step(
+                    "diagnostics",
+                    {"operation": "connectivity"},
+                    "test whether the internet and DNS are working",
+                )
+            ]
+        )
+
+    if _SCREENSHOT.search(text):
+        return Plan([Step("screenshot", {}, "capture the screen")])
+
     if _PROCESS_TOP.search(text):
         return Plan(
             [
@@ -258,6 +309,22 @@ def plan(message: str) -> Plan:
                 )
             ]
         )
+
+    if match := _SYSTEM_INFO.search(text):
+        topic = match.group("topic").lower()
+        operation = {
+            "disk": "disks",
+            "disks": "disks",
+            "storage": "disks",
+            "space": "disks",
+            "memory": "memory",
+            "ram": "memory",
+            "cpu": "cpu",
+            "processor": "cpu",
+            "battery": "battery",
+            "uptime": "uptime",
+        }.get(topic, "summary")
+        return Plan([Step("systeminfo", {"operation": operation}, f"read {topic} information")])
 
     if match := _DELETE.search(text):
         name = match.group("name").strip()

@@ -60,9 +60,17 @@ async def test_security_request_claims_no_status(ctx) -> None:
         assert claim not in text
 
 
-async def test_diagnostic_is_intercepted(ctx) -> None:
+async def test_diagnostics_run_rather_than_being_deferred(ctx) -> None:
+    """Since Phase 5 this is measured. The model is never asked to diagnose."""
     _, events = await _run(ctx, "why is my laptop slow?")
-    assert next(e for e in events if e.type is EventType.NOTICE).data["available_in_phase"] == 5
+    kinds = [e.type for e in events]
+    assert EventType.DELTA not in kinds, "diagnosis must not be left to the model"
+    assert EventType.TOOL_RESULT in kinds
+
+    result = next(e for e in events if e.type is EventType.TOOL_RESULT)
+    assert result.data["data"]["findings"], "every answer must carry measured findings"
+    for finding in result.data["data"]["findings"]:
+        assert finding["evidence"], finding["title"]
 
 
 async def test_notice_is_persisted(ctx) -> None:

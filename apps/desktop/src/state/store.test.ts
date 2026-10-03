@@ -296,8 +296,8 @@ describe('store: voice', () => {
 describe('phase gating', () => {
   beforeEach(reset);
 
-  it('shipped phase matches the app-control phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.appControl);
+  it('shipped phase matches the system-tools phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.systemTools);
   });
 
   // An action that claims to be available must have something behind it.

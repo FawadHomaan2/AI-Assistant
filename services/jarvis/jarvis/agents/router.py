@@ -129,6 +129,19 @@ _SECURITY = (
 #: Questions about what is running. A substring list is too brittle for the
 #: number of ways people phrase this ("which apps are open", "what applications
 #: are currently running"), so this one gets a pattern.
+#: Questions about the machine's own condition that now have tools behind them.
+_MACHINE_QUESTION = re.compile(
+    r"\b(?:"
+    r"(?:is|are)\s+(?:my|the)\s+(?:internet|wi-?fi|network|connection)\b"
+    r"|(?:can'?t|cannot)\s+(?:connect|get\s+online)"
+    r"|check\s+(?:my\s+)?(?:memory|ram|cpu|disk|storage|battery|network|internet)"
+    r"|how\s+much\s+(?:memory|ram|disk|storage|space)"
+    r"|take\s+a\s+screen\s?shot|screenshot"
+    r"|diagnose\b|run\s+a?\s*diagnostic"
+    r")\b",
+    re.IGNORECASE,
+)
+
 _PROCESS_QUESTION = re.compile(
     r"\b(?:"
     r"what(?:'s| is)?\s+running"
@@ -216,6 +229,14 @@ def route(message: str) -> Route:
         ):
             return Route(Intent.CHAT, 0.7, "a general question that mentions security", signals)
         return Route(Intent.SECURITY, 0.8, "asks about this machine's security state", signals)
+
+    if _MACHINE_QUESTION.search(text):
+        return Route(
+            Intent.DIAGNOSTIC,
+            0.85,
+            "asks about this computer's own condition",
+            ["machine question"],
+        )
 
     if _PROCESS_QUESTION.search(text):
         return Route(

@@ -15,7 +15,9 @@ from jarvis.agents.types import Intent
         ("Create a new folder on my desktop", Intent.COMPUTER_TASK),
         ("Organize my Downloads folder", Intent.COMPUTER_TASK),
         ("rename these files", Intent.COMPUTER_TASK),
-        ("take a screenshot", Intent.COMPUTER_TASK),
+        # Screenshots are a question about this machine, handled by the
+        # diagnostics route since Phase 5.
+        ("take a screenshot", Intent.DIAGNOSTIC),
         ("Find duplicate files", Intent.COMPUTER_TASK),
         ("find my CV files", Intent.COMPUTER_TASK),
         ("close this application", Intent.COMPUTER_TASK),

@@ -175,12 +175,48 @@ executor, ending the stream with no `turn.end` and leaving the interface busy
 forever. A turn now always closes, and there are regression tests for both
 layers.
 
-## Phase 5 — System tools & diagnostics · next
-`SystemInfoTool`, `NetworkTool`, allowlisted `PowerShellTool`, `ClipboardTool`,
-`NotificationTool`, `ScreenshotTool`, and "why is my PC slow" with evidence.
-*Gate:* a diagnostic report that cites measurements, not guesses.
+## Phase 5 — System tools & diagnostics · **done**
 
-## Phase 6 — Voice · planned
+Shipped: `SystemInfoTool`, `NetworkTool`, `DiagnosticsTool`, `ScreenshotTool`,
+`ClipboardTool`, `NotificationTool`, allowlisted `PowerShellTool`, and a single
+subprocess chokepoint.
+
+**Diagnosis is measured, never guessed.** "Why is my computer slow" collects a
+snapshot, applies stated thresholds, and reports each finding with the number
+that triggered it. When nothing crosses a threshold the answer is "I measured
+these things and they look normal", with the measurements — not a reassuring
+sentence and not an invented cause. The model is never asked to diagnose; it
+relays findings.
+
+**PowerShell is allowlist-only.** Twenty read-only `Get-` cmdlets with validated
+parameters, and everything else refused. A blocklist would be the wrong shape:
+there are always more dangerous commands. Refused with a specific reason:
+command chaining, encoded commands, subexpressions, file writes,
+`Invoke-Expression`, downloads, `Add-Type`, .NET reflection, `Start-Process`,
+`Set-ExecutionPolicy`, `Set-MpPreference`, shelling out to another interpreter,
+and any state-changing verb.
+
+**Screenshots and the clipboard are treated as surveillance-adjacent.** Capture
+is only ever on explicit request, written where you can see it, and the consent
+prompt says what will be in the image ("anything visible — open documents,
+messages, passwords in plain sight"). There is no scheduled, periodic or
+background capture anywhere in this codebase.
+
+**Verified on Linux (55 new tests):** psutil-backed system info and network
+tools run for real; the full PowerShell allowlist including 16 refusal cases;
+the diagnostics thresholds, evidence requirements and ordering; and the
+subprocess chokepoint (no shell, mandatory timeout, child deregistration,
+missing-program and timeout handling).
+
+**Needs Windows to verify:** actually executing PowerShell, the native clipboard
+API, and screen capture against a real display.
+
+**Fixed while building:** the disk analyser reported read-only mounts and small
+system partitions as critically full — five false criticals on a normal machine.
+Read-only volumes and anything under 4 GB are now skipped, which matters as much
+on Windows (recovery partitions, mounted ISOs) as here.
+
+## Phase 6 — Voice · next
 VAD → faster-whisper → core → Piper, openWakeWord ("Jarvis"), push-to-talk,
 barge-in, visible mic state.
 *Gate:* a spoken command executes end to end on real hardware.

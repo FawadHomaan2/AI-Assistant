@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 4;
+export const CURRENT_PHASE = 5;
 
 export interface QuickAction {
   id: string;
@@ -73,9 +73,21 @@ export const QUICK_ACTIONS: QuickAction[] = [
     availableIn: PHASE.fileTools,
     template: 'find my pdf files in documents',
   },
-  { id: 'screenshot', label: 'Screenshot', hint: 'Capture the screen or a window', availableIn: PHASE.systemTools },
+  {
+    id: 'screenshot',
+    label: 'Screenshot',
+    hint: 'Capture the screen to an image file',
+    availableIn: PHASE.systemTools,
+    template: 'take a screenshot',
+  },
   { id: 'security-scan', label: 'Security Scan', hint: 'Check Defender, firewall, startup items', availableIn: PHASE.security },
-  { id: 'system-check', label: 'System Check', hint: 'Diagnose CPU, memory, disk and network', availableIn: PHASE.systemTools },
+  {
+    id: 'system-check',
+    label: 'System Check',
+    hint: 'Measure CPU, memory, disk and uptime and report what crossed a threshold',
+    availableIn: PHASE.systemTools,
+    template: 'why is my computer slow',
+  },
   {
     id: 'find-duplicates',
     label: 'Find Duplicates',

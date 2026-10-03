@@ -59,8 +59,7 @@ class TestDeclining:
     @pytest.mark.parametrize(
         ("message", "phase_text"),
         [
-            ("take a screenshot", "Phase 5"),
-            ("turn off bluetooth", "Phase 5"),
+            ("turn off bluetooth", "not built yet"),
             ("search the web for react docs", "Phase 7"),
         ],
     )
@@ -156,10 +155,17 @@ class TestApplicationsAndWindows:
         assert steps[0].tool == "process"
         assert steps[0].args["operation"] == operation
 
-    def test_deeper_diagnostics_still_name_phase_5(self) -> None:
-        """Process listing works; the evidence-gathering behind "why is it slow"
-        does not, and the reply distinguishes them."""
-        result = plan("why is my laptop slow")
+    def test_slowness_now_runs_real_diagnostics(self) -> None:
+        """ "Why is it slow" is measured, not guessed at."""
+        steps = plan("why is my laptop slow").steps
+        assert steps[0].tool == "diagnostics"
+        assert steps[0].args["operation"] == "performance"
+
+    def test_screenshots_map_to_the_capture_tool(self) -> None:
+        assert plan("take a screenshot").steps[0].tool == "screenshot"
+
+    def test_driver_and_startup_checks_still_name_phase_9(self) -> None:
+        """Those land with the Security Center, and the reply says so."""
+        result = plan("check my startup programs")
         assert result.steps == []
-        assert "Phase 5" in result.unsupported
-        assert "what is running" in result.unsupported
+        assert "Phase 9" in result.unsupported

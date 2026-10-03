@@ -34,10 +34,11 @@ async def test_computer_task_never_reaches_the_model(ctx) -> None:
     _, events = await _run(ctx, "Open Chrome and search for React docs")
     kinds = [e.type for e in events]
     assert EventType.DELTA not in kinds, "a computer task must never reach the model"
-    assert EventType.NOTICE in kinds
-
-    notice = next(e for e in events if e.type is EventType.NOTICE)
-    assert "Launching and controlling applications arrives in Phase 4" in notice.data["message"]
+    # It now reaches the application tool. On a machine without Chrome installed
+    # that produces a refusal, which is still the tool layer answering — not the
+    # model claiming to have opened a browser.
+    assert EventType.PLAN in kinds
+    assert {EventType.NOTICE, EventType.TOOL_RESULT} & set(kinds)
 
 
 async def test_unmappable_file_request_says_so_rather_than_guessing(ctx) -> None:

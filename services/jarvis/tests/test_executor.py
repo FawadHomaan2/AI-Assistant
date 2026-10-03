@@ -266,3 +266,66 @@ class TestAudit:
         await h.run({"operation": "create_folder", "path": str(workspace / secret_name)})
         assert all(secret_name not in str(e) for e in h.audit.recent())
         h.close()
+
+
+class TestTurnAlwaysCloses:
+    """A turn that ends without `turn.end` leaves the interface busy forever.
+
+    This was a real bug: `PlatformUnsupported` is a JarvisError but not a
+    ToolError, so it escaped the preview handler and the stream just stopped.
+    """
+
+    async def test_an_unexpected_typed_error_in_preview_becomes_an_event(
+        self, workspace, monkeypatch
+    ) -> None:
+        from jarvis.util.errors import PlatformUnsupported
+
+        h = Harness(workspace, scopes=set(Scope))
+        tool = h.executor.registry.get("filesystem")
+
+        async def unsupported(_args):
+            raise PlatformUnsupported("This needs Windows.")
+
+        monkeypatch.setattr(tool, "preview", unsupported)
+        events = await h.run({"operation": "list", "path": str(workspace)})
+
+        assert events, "the executor must emit something, not stop silently"
+        error = next(e for e in events if e.type is EventType.ERROR)
+        assert error.data["code"] == "jarvis.platform_unsupported"
+        h.close()
+
+    async def test_the_orchestrator_closes_a_turn_whose_step_raised(
+        self, workspace, monkeypatch
+    ) -> None:
+        from jarvis.agents.orchestrator import Orchestrator
+        from jarvis.agents.types import Intent
+        from jarvis.ai.gateway import Gateway
+        from jarvis.config.settings import Settings
+        from jarvis.db.repositories import SessionRepository, TurnRepository
+        from jarvis.util.errors import PlatformUnsupported
+
+        h = Harness(workspace, scopes=set(Scope))
+        sessions = SessionRepository(h.db)
+        turns = TurnRepository(h.db)
+        orchestrator = Orchestrator(
+            Gateway(Settings()), sessions, turns, h.audit, h.estop, h.executor
+        )
+
+        async def boom(*_args, **_kwargs):
+            raise PlatformUnsupported("This needs Windows.")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr(h.executor, "run", boom)
+        session = sessions.create()
+        events = [
+            e
+            async for e in orchestrator._run_task(
+                session.id, "list my downloads", 0.0, Intent.COMPUTER_TASK
+            )
+        ]
+
+        kinds = [e.type for e in events]
+        assert EventType.ERROR in kinds
+        assert kinds[-1] is EventType.TURN_END, "the turn must close even when a step raises"
+        assert events[-1].data["handled"] == "task_failed"
+        h.close()

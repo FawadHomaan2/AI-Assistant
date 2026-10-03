@@ -59,7 +59,6 @@ class TestDeclining:
     @pytest.mark.parametrize(
         ("message", "phase_text"),
         [
-            ("open chrome", "Phase 4"),
             ("take a screenshot", "Phase 5"),
             ("turn off bluetooth", "Phase 5"),
             ("search the web for react docs", "Phase 7"),
@@ -94,3 +93,73 @@ class TestDeleting:
         for phrasing in ["delete report.pdf", "remove report.pdf from downloads"]:
             steps = plan(phrasing).steps
             assert steps[0].args["operation"] == "delete"
+
+
+class TestApplicationsAndWindows:
+    """Phase 4 mappings."""
+
+    @pytest.mark.parametrize(
+        ("message", "name"),
+        [
+            ("open chrome", "chrome"),
+            ("launch spotify", "spotify"),
+            ("start visual studio code", "visual studio code"),
+            ("run notepad", "notepad"),
+        ],
+    )
+    def test_launching(self, message: str, name: str) -> None:
+        steps = plan(message).steps
+        assert steps[0].tool == "application"
+        assert steps[0].args == {"operation": "launch", "name": name}
+
+    @pytest.mark.parametrize(
+        ("message", "operation"),
+        [
+            ("close notepad", "close"),
+            ("quit spotify", "close"),
+            ("minimise word", "minimise"),
+            ("maximize chrome", "maximise"),
+            ("switch to chrome", "focus"),
+        ],
+    )
+    def test_window_actions(self, message: str, operation: str) -> None:
+        steps = plan(message).steps
+        assert steps[0].tool == "window"
+        assert steps[0].args["operation"] == operation
+
+    # "open my downloads folder" is a file request, not an app launch.
+    @pytest.mark.parametrize(
+        "message",
+        ["open my downloads folder", "open my documents folder", "show my desktop"],
+    )
+    def test_folder_requests_are_not_app_launches(self, message: str) -> None:
+        steps = plan(message).steps
+        assert steps[0].tool == "filesystem"
+        assert steps[0].args["operation"] == "list"
+
+    def test_opening_a_document_is_not_an_app_launch(self) -> None:
+        steps = plan("open report.pdf").steps
+        assert steps[0].tool == "document"
+
+    @pytest.mark.parametrize(
+        ("message", "operation"),
+        [
+            ("what is running", "list"),
+            ("which programs are open", "list"),
+            ("list my processes", "list"),
+            ("what is using my cpu", "top"),
+            ("what's hogging my memory", "top"),
+        ],
+    )
+    def test_process_questions(self, message: str, operation: str) -> None:
+        steps = plan(message).steps
+        assert steps[0].tool == "process"
+        assert steps[0].args["operation"] == operation
+
+    def test_deeper_diagnostics_still_name_phase_5(self) -> None:
+        """Process listing works; the evidence-gathering behind "why is it slow"
+        does not, and the reply distinguishes them."""
+        result = plan("why is my laptop slow")
+        assert result.steps == []
+        assert "Phase 5" in result.unsupported
+        assert "what is running" in result.unsupported

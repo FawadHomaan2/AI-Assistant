@@ -6,14 +6,17 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 3 of 12 — files and documents.**
-> Jarvis now **acts on your computer**: it lists, searches, reads, creates,
-> moves and deletes files inside the folders you allow, and reads PDFs, Word,
-> Excel, PowerPoint and CSV. Every action goes through a path jail, a policy
-> engine and a confirmation gate, and lands in a tamper-evident audit log.
-> Applications, system settings, voice, browsing and security monitoring arrive
-> in later phases, and every surface says so rather than showing placeholder
-> data. See [docs/PHASES.md](docs/PHASES.md).
+> **Current state: Phase 4 of 12 — files, documents, apps and processes.**
+> Jarvis works with your files, reads documents, starts installed programs,
+> manages windows, and tells you what is running and what is using the CPU.
+> Every action goes through a path jail, a policy engine and a confirmation
+> gate, and lands in a tamper-evident audit log.
+>
+> **The Windows-specific parts of Phase 4 are written but unverified** — window
+> control and application launching call Win32 APIs that cannot be executed in
+> this project's Linux CI. The process layer is fully verified, because psutil
+> behaves identically on both. See [docs/PHASES.md](docs/PHASES.md) for exactly
+> what is and is not confirmed.
 
 ---
 
@@ -161,8 +164,13 @@ find my pdf files from last month in documents
 create a folder called University on my desktop
 find duplicate files in downloads
 read budget.csv
+what programs are running
+what is using my cpu
+open chrome                           → resolved against installed software
+close notepad                         → posts WM_CLOSE so it can prompt to save
 delete report.pdf from downloads      → refused: fs.delete isn't granted by default
 read /etc/passwd                      → refused: protected location
+end csrss.exe                         → refused: ending it would crash Windows
 ```
 
 Open-ended requests ("organise my downloads however you think best") are
@@ -181,7 +189,7 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 
 # Python core
 cd services/jarvis
-.venv/bin/python -m pytest -q      # 306 tests, incl. 52 path-jail escape attempts
+.venv/bin/python -m pytest -q      # 442 tests, incl. 52 path-jail escape attempts
 .venv/bin/ruff check . && .venv/bin/mypy jarvis    # strict
 
 # Palette

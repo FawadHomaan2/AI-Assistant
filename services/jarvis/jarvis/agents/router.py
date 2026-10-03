@@ -84,6 +84,18 @@ _DIAGNOSTIC = (
     "disk usage",
     "what's running",
     "whats running",
+    "what is running",
+    "what programs are open",
+    "what apps are open",
+    "programs are running",
+    "apps are running",
+    "applications are running",
+    "programs running",
+    "task manager",
+    "using my cpu",
+    "using my memory",
+    "using my ram",
+    "hogging",
     "which programs",
     "what programs",
     "running processes",
@@ -112,6 +124,20 @@ _SECURITY = (
     "encrypted",
     "bitlocker",
     "phishing",
+)
+
+#: Questions about what is running. A substring list is too brittle for the
+#: number of ways people phrase this ("which apps are open", "what applications
+#: are currently running"), so this one gets a pattern.
+_PROCESS_QUESTION = re.compile(
+    r"\b(?:"
+    r"what(?:'s| is)?\s+running"
+    r"|(?:what|which|list|show)\s+(?:\w+\s+){0,3}?(?:programs?|apps?|applications?|processes)\b"
+    r"|running\s+(?:programs?|processes|apps?)"
+    r"|task\s+manager"
+    r"|(?:using|hogging|eating)\s+(?:my\s+)?(?:cpu|memory|ram)"
+    r")\b",
+    re.IGNORECASE,
 )
 
 _MEMORY = (
@@ -190,6 +216,14 @@ def route(message: str) -> Route:
         ):
             return Route(Intent.CHAT, 0.7, "a general question that mentions security", signals)
         return Route(Intent.SECURITY, 0.8, "asks about this machine's security state", signals)
+
+    if _PROCESS_QUESTION.search(text):
+        return Route(
+            Intent.DIAGNOSTIC,
+            0.85,
+            "asks what is running on this computer",
+            ["process question"],
+        )
 
     if signals := _hits(text, _DIAGNOSTIC):
         return Route(Intent.DIAGNOSTIC, 0.8, "asks about this machine's condition", signals)

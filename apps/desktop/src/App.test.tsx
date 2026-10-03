@@ -133,8 +133,8 @@ describe('App shell', () => {
   it('a gated quick action names the phase it needs rather than acting', async () => {
     const user = userEvent.setup();
     await renderApp();
-    await user.click(screen.getByRole('button', { name: /Open Apps/ }));
-    expect(screen.getByText(/needs Phase 4/i)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Screenshot/ }));
+    expect(screen.getByText(/needs Phase 5/i)).toBeTruthy();
     expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
   });
 

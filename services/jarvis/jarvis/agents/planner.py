@@ -43,7 +43,7 @@ class Plan:
 
 _FOLDER_WORDS = "|".join(folders.KNOWN_FOLDERS)
 
-_LIST = re.compile(rf"\b(list|show|what(?:'s| is) in)\b.*\b({_FOLDER_WORDS})\b", re.IGNORECASE)
+_LIST = re.compile(rf"\b(list|show|open|what(?:'s| is) in)\b.*\b({_FOLDER_WORDS})\b", re.IGNORECASE)
 _SEARCH = re.compile(
     rf"\b(find|search for|look for|locate|list)\b.*\b(?P<folder>{_FOLDER_WORDS})\b",
     re.IGNORECASE,
@@ -99,6 +99,46 @@ _DELETE = re.compile(
     re.IGNORECASE,
 )
 
+#: "open chrome", "launch spotify".
+_LAUNCH = re.compile(
+    r"\b(?:open|launch|start|run)\b\s+(?:up\s+)?(?:the\s+|my\s+)?(?P<name>[\w .+\-]{2,40}?)"
+    r"\s*(?:\b(?:app|application|program|for me|please)\b.*)?$",
+    re.IGNORECASE,
+)
+
+#: "what's running", "which programs are open", "what is using my cpu".
+_PROCESS_LIST = re.compile(
+    r"\b(?:"
+    r"what(?:'s| is)?\s+running"
+    # "what programs are running", "which apps are open", "what applications
+    # are currently running" — up to two words between the noun and the verb.
+    r"|(?:what|which|list)\s+(?:\w+\s+){0,2}?(?:programs?|apps?|applications?|processes)\b"
+    r"|running\s+(?:programs?|processes|apps?)"
+    r"|task\s+manager"
+    r")\b",
+    re.IGNORECASE,
+)
+
+#: "what's using my cpu", "what's slowing things down".
+_PROCESS_TOP = re.compile(
+    r"\b(using\s+(?:my\s+)?(?:cpu|memory|ram)|most\s+(?:cpu|memory|ram)|"
+    r"hogging|eating\s+(?:my\s+)?(?:cpu|memory|ram)|busiest)\b",
+    re.IGNORECASE,
+)
+
+#: "close notepad", "minimise word".
+_WINDOW_ACTION = re.compile(
+    r"\b(?P<action>close|quit|minimi[sz]e|maximi[sz]e|focus|switch to|bring up)\b"
+    r"\s+(?:the\s+|my\s+)?(?P<name>[\w .+\-]{2,40}?)"
+    r"\s*(?:\b(?:window|app|application|program|please)\b.*)?$",
+    re.IGNORECASE,
+)
+
+#: Words that mean the request is about files, not an application.
+_FILE_CONTEXT = re.compile(
+    r"\b(folder|file|files|document|directory|pdf|docx?|xlsx?|csv|txt)\b", re.IGNORECASE
+)
+
 _READ = re.compile(r"\b(read|open|summari[sz]e)\b.+?(?P<path>[\w\-. ]+\.\w{2,5})\b", re.IGNORECASE)
 
 #: An explicit path with no recognised extension. Routed to the document tool so
@@ -114,16 +154,18 @@ _READ_PATH = re.compile(
 #: name the right missing capability instead of talking about folders.
 _OTHER_DOMAINS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
-        re.compile(
-            r"\b(open|launch|start|run|close|quit|switch to|focus|minimi[sz]e|maximi[sz]e)\b"
-            r"(?!.*\b(folder|file|files|document)\b)",
-            re.IGNORECASE,
-        ),
-        "Launching and controlling applications arrives in Phase 4.",
-    ),
-    (
         re.compile(r"\b(screenshot|screen shot|capture the screen)\b", re.IGNORECASE),
         "Screenshots arrive in Phase 5.",
+    ),
+    (
+        re.compile(
+            r"\b(why is|why's).{0,20}\b(slow|sluggish|freezing|lagging)\b|"
+            r"\b(disk space|battery|temperature|drivers?|startup programs)\b",
+            re.IGNORECASE,
+        ),
+        "Full diagnostics — disk, startup programs, drivers and the evidence "
+        'behind "why is my PC slow" — arrive in Phase 5. I can already tell you '
+        "what is running and what is using the CPU.",
     ),
     (
         re.compile(r"\b(wi-?fi|bluetooth|volume|brightness|turn (on|off))\b", re.IGNORECASE),
@@ -195,6 +237,28 @@ def plan(message: str) -> Plan:
             args["modified_within_days"] = 31
         return Plan([Step("filesystem", args, f"search {folder} for {pattern}")])
 
+    if _PROCESS_TOP.search(text):
+        return Plan(
+            [
+                Step(
+                    "process",
+                    {"operation": "top", "limit": 10},
+                    "measure which programs are using the CPU",
+                )
+            ]
+        )
+
+    if _PROCESS_LIST.search(text):
+        return Plan(
+            [
+                Step(
+                    "process",
+                    {"operation": "list", "limit": 20},
+                    "list the running programs",
+                )
+            ]
+        )
+
     if match := _DELETE.search(text):
         name = match.group("name").strip()
         folder = (match.groupdict().get("folder") or "downloads").lower()
@@ -231,6 +295,45 @@ def plan(message: str) -> Plan:
                 )
             ]
         )
+
+    # Window actions before launching, so "close notepad" is not read as "open".
+    if (match := _WINDOW_ACTION.search(text)) and not _FILE_CONTEXT.search(text):
+        action = match.group("action").lower()
+        operation = {
+            "close": "close",
+            "quit": "close",
+            "minimise": "minimise",
+            "minimize": "minimise",
+            "maximise": "maximise",
+            "maximize": "maximise",
+            "focus": "focus",
+            "switch to": "focus",
+            "bring up": "focus",
+        }[action]
+        name = match.group("name").strip()
+        if name:
+            return Plan(
+                [
+                    Step(
+                        "window",
+                        {"operation": operation, "title": name},
+                        f"{operation} the {name} window",
+                    )
+                ]
+            )
+
+    if (match := _LAUNCH.search(text)) and not _FILE_CONTEXT.search(text):
+        name = match.group("name").strip()
+        if name and name.lower() not in {"up", "it", "that", "this"}:
+            return Plan(
+                [
+                    Step(
+                        "application",
+                        {"operation": "launch", "name": name},
+                        f"start {name}",
+                    )
+                ]
+            )
 
     for domain_regex, explanation in _OTHER_DOMAINS:
         if domain_regex.search(text):

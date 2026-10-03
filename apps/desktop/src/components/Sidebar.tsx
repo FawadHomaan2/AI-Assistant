@@ -31,7 +31,7 @@ export function Sidebar() {
         <span className="sidebar__mark" aria-hidden="true">J</span>
         <span className="sidebar__name">
           Jarvis
-          <small>Phase {CURRENT_PHASE} · files</small>
+          <small>Phase {CURRENT_PHASE} · apps</small>
         </span>
       </div>
 

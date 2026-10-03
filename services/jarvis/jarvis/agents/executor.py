@@ -18,10 +18,9 @@ from typing import Any
 from jarvis.agents.types import AgentEvent, EventType
 from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer, ConsentBroker, ConsentDeclined, ConsentTimedOut
-from jarvis.governance.pathjail import PathDenied
 from jarvis.governance.policy import Policy, Verdict
 from jarvis.governance.risk import Risk
-from jarvis.tools.base import Preview, Tool, ToolError, ToolResult
+from jarvis.tools.base import Preview, Tool, ToolResult
 from jarvis.tools.registry import ToolRegistry
 from jarvis.util.errors import EmergencyStopped, JarvisError
 from jarvis.util.logging import get_logger
@@ -76,7 +75,11 @@ class Executor:
         # ── 1. Preview: measure, don't guess ─────────────────────────────
         try:
             preview = await tool.preview(args)
-        except (PathDenied, ToolError) as exc:
+        except JarvisError as exc:
+            # Any typed failure becomes an event — a denied path, a bad argument,
+            # or a capability this platform does not have. Letting one escape
+            # would end the turn with no result and no turn.end, leaving the
+            # interface waiting for a reply that never comes.
             self._audit(tool_name, action, "denied", session_id, error=exc.code)
             yield self._error(exc)
             return

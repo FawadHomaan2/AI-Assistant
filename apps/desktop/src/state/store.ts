@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 3;
+export const CURRENT_PHASE = 4;
 
 export interface QuickAction {
   id: string;
@@ -52,7 +52,20 @@ export interface QuickAction {
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
-  { id: 'open-apps', label: 'Open Apps', hint: 'Launch an application by name', availableIn: PHASE.appControl },
+  {
+    id: 'open-apps',
+    label: 'Open Apps',
+    hint: 'Launch an installed application by name',
+    availableIn: PHASE.appControl,
+    template: 'open chrome',
+  },
+  {
+    id: 'running-apps',
+    label: "What's Running",
+    hint: 'List running programs and what is using the CPU',
+    availableIn: PHASE.appControl,
+    template: 'what programs are running',
+  },
   {
     id: 'search-files',
     label: 'Search Files',

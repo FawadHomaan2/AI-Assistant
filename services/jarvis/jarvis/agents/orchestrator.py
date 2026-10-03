@@ -135,9 +135,14 @@ class Orchestrator:
             )
         )
 
-        # Filesystem work now has tools behind it.
-        if decision.intent is Intent.COMPUTER_TASK and self.executor is not None:
-            async for event in self._run_task(session_id, text, started):
+        # Files, applications, windows and processes all have tools now. The
+        # planner decides what maps; anything it cannot map falls through to an
+        # honest notice rather than being guessed at.
+        if (
+            decision.intent in (Intent.COMPUTER_TASK, Intent.DIAGNOSTIC)
+            and self.executor is not None
+        ):
+            async for event in self._run_task(session_id, text, started, decision.intent):
                 yield event
             return
 
@@ -166,7 +171,7 @@ class Orchestrator:
             yield event
 
     async def _run_task(
-        self, session_id: str, text: str, started: float
+        self, session_id: str, text: str, started: float, intent: Intent = Intent.COMPUTER_TASK
     ) -> AsyncIterator[AgentEvent]:
         """Turn a filesystem request into gated tool calls."""
         assert self.executor is not None
@@ -178,8 +183,8 @@ class Orchestrator:
                 EventType.NOTICE,
                 {
                     "message": plan.unsupported,
-                    "intent": Intent.COMPUTER_TASK.value,
-                    "available_in_phase": INTENT_PHASE[Intent.COMPUTER_TASK],
+                    "intent": intent.value,
+                    "available_in_phase": INTENT_PHASE[intent],
                 },
             )
             yield AgentEvent(
@@ -194,15 +199,28 @@ class Orchestrator:
         yield AgentEvent(EventType.PLAN, plan.to_dict())
 
         summaries: list[str] = []
-        for step in plan.steps:
-            async for event in self.executor.run(
-                step.tool, step.args, origin=f'"{text}" → {step.rationale}', session_id=session_id
-            ):
-                if event.type is EventType.TOOL_RESULT:
-                    summaries.append(str(event.data.get("summary", "")))
-                elif event.type in (EventType.NOTICE, EventType.ERROR):
-                    summaries.append(str(event.data.get("message", "")))
-                yield event
+        failed = False
+        try:
+            for step in plan.steps:
+                async for event in self.executor.run(
+                    step.tool,
+                    step.args,
+                    origin=f'"{text}" → {step.rationale}',
+                    session_id=session_id,
+                ):
+                    if event.type is EventType.TOOL_RESULT:
+                        summaries.append(str(event.data.get("summary", "")))
+                    elif event.type in (EventType.NOTICE, EventType.ERROR):
+                        summaries.append(str(event.data.get("message", "")))
+                    yield event
+        except JarvisError as exc:
+            # A turn must always close, however a step fails. Without this an
+            # unexpected error ends the stream with no turn.end and the
+            # interface stays busy forever.
+            failed = True
+            log.warning("task step failed", code=exc.code)
+            summaries.append(exc.message)
+            yield AgentEvent(EventType.ERROR, {"code": exc.code, "message": exc.message})
 
         if summaries:
             self.turns.add(session_id, "system", "\n".join(summaries), privacy_class="metadata")
@@ -211,7 +229,7 @@ class Orchestrator:
             EventType.TURN_END,
             {
                 "elapsed_ms": int((time.monotonic() - started) * 1000),
-                "handled": "task",
+                "handled": "task_failed" if failed else "task",
                 "steps": len(plan.steps),
             },
         )

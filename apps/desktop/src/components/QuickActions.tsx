@@ -9,6 +9,7 @@ const ICONS: Record<string, IconName> = {
   'security-scan': 'shield',
   'system-check': 'cpu',
   'find-duplicates': 'broom',
+  'running-apps': 'list',
   voice: 'mic',
 };
 

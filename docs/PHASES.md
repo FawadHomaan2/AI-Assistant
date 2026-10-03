@@ -120,11 +120,62 @@ symlink. Closing it needs handle-based operations (`O_NOFOLLOW`,
 is a confused model or a malicious document, not a local race — but it is not a
 defence against another process actively racing it.
 
-## Phase 4 — Applications & windows · next
-`ApplicationTool`, `WindowTool`, `ProcessTool` over Win32 (control layer L1).
-*Gate:* launch → focus → close round-trip on Windows.
+## Phase 4 — Applications, windows & processes · **done (Windows parts unverified)**
 
-## Phase 5 — System tools & diagnostics · planned
+The first phase whose core cannot be executed in this repository's CI at all.
+That shaped the design: the platform layer is split so the maximum is still
+genuinely tested, and what cannot be is named rather than assumed.
+
+Shipped:
+- **Platform adapter layer** — three backends (process, window, application)
+  behind one interface, selected at startup. Everything above them is written
+  once.
+- **ProcessTool** — list, find, inspect, measure CPU, and end a program. psutil
+  is identical on Windows and here, so this tool is **fully verified**, not
+  mocked. CPU percentage is sampled over a real interval, because a single read
+  reports zero for everything.
+- **Protected-process list** — core Windows processes, security software and
+  Jarvis itself can never be ended. Checked in the backend, *below* the policy
+  engine, so no mode, scope or confirmation reaches it. A process running from
+  `System32` is protected even when its name is not on the list.
+- **ApplicationTool** — starts installed software resolved by name. Fuzzy
+  matching with aliases ("vs code" → Visual Studio Code) that asks rather than
+  guessing when a name is ambiguous.
+- **WindowTool** — list, focus, minimise, maximise, close. Closing posts
+  `WM_CLOSE`, the same message the X button sends, so the application can prompt
+  about unsaved work; force-ending a process is a separate, higher tier.
+- **Win32 backend** — `user32` through ctypes (no pywin32 on the critical path)
+  and `ShellExecuteExW` for launching, so shortcuts, file associations and Store
+  apps work. Includes the `AttachThreadInput` dance Windows requires before
+  `SetForegroundWindow` will succeed.
+
+**Why `ApplicationTool` has no `path` input.** The model supplies a *name*,
+matched against software this machine has installed; the catalogue entry
+supplies the launch target. A document saying "open
+C:\Users\me\Downloads\invoice.pdf.exe" therefore cannot become a launch. A
+path input would hand a prompt-injected model arbitrary code execution, and no
+confirmation dialog makes that a good trade.
+
+**Verified on Linux (131 new tests):** the protected-process list for both
+Windows and POSIX names; app-name matching; the full ProcessTool against real
+psutil; ApplicationTool and WindowTool logic against fake backends; and the
+Win32 window filtering, state mapping and action dispatch driven by a fake
+`user32` — including that focus attaches *and releases* the input queue, and
+that close posts `WM_CLOSE` rather than killing.
+
+**Needs Windows to verify — this is the honest limit of this phase:**
+every real Win32 call. `EnumWindows`, `ShowWindow`, `SetForegroundWindow`,
+`PostMessage`, `ShellExecuteExW`, and the App Paths / Start Menu catalogue have
+been written against the documented API and cannot be executed here. The
+Phase 4 gate — launch → focus → close on a real machine — is **not met until
+run on Windows.**
+
+**Also fixed here:** an unexpected typed error during a tool preview escaped the
+executor, ending the stream with no `turn.end` and leaving the interface busy
+forever. A turn now always closes, and there are regression tests for both
+layers.
+
+## Phase 5 — System tools & diagnostics · next
 `SystemInfoTool`, `NetworkTool`, allowlisted `PowerShellTool`, `ClipboardTool`,
 `NotificationTool`, `ScreenshotTool`, and "why is my PC slow" with evidence.
 *Gate:* a diagnostic report that cites measurements, not guesses.

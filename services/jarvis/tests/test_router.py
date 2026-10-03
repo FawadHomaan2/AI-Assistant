@@ -55,3 +55,29 @@ def test_decision_explains_itself() -> None:
     assert decision.reason
     assert decision.signals
     assert 0.0 < decision.confidence <= 1.0
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "go to example.com",
+        "open github.com",
+        "visit https://news.ycombinator.com",
+        "search the web for best laptops",
+        "google the weather",
+        "look up rust traits online",
+        "pull up wikipedia.org",
+    ],
+)
+def test_web_requests_are_computer_tasks(message: str) -> None:
+    """Browsing is something Jarvis does, so it must reach the tool layer."""
+    assert route(message).intent is Intent.COMPUTER_TASK
+
+
+def test_a_web_request_is_not_mistaken_for_a_diagnostic() -> None:
+    """ "search the web for disk space tools" mentions disk space but is a search."""
+    assert route("search the web for disk space tools").intent is Intent.COMPUTER_TASK
+
+
+def test_questions_about_the_web_are_still_chat() -> None:
+    assert route("how does HTTPS work").intent is Intent.CHAT

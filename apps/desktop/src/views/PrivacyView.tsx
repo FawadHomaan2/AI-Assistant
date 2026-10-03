@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Page, Explainer, Card, NotImplemented } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useStore, PHASE } from '@/state/store';
+import { browserStatus, type BrowserStatus } from '@/lib/api';
 import './views.css';
 
 /** Scopes granted by default on install (ARCHITECTURE.md §7, axis 2). */
@@ -28,6 +30,20 @@ export function PrivacyView() {
   const activity = useStore((s) => s.activity);
   const clearMessages = useStore((s) => s.clearMessages);
   const clearActivity = useStore((s) => s.clearActivity);
+  // Read from the core rather than restating the intended default: the config
+  // file is editable, and a dashboard that shows the wrong allowlist is worse
+  // than one that shows none.
+  const [browser, setBrowser] = useState<BrowserStatus | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    browserStatus().then((res) => {
+      if (live && res.ok) setBrowser(res.value);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   return (
     <Page title="Privacy" subtitle="What Jarvis can reach, what it has stored, and how to revoke it.">
@@ -57,6 +73,61 @@ export function PrivacyView() {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card title="Web browsing">
+        <p className="card__note">
+          Jarvis drives its own browser profile, never the one you are signed in
+          to. A page it reads cannot act as you, and it can only visit the sites
+          listed below — that list is what stops a web page from telling Jarvis
+          to go somewhere else and paste what it just read.
+        </p>
+        {browser === null ? (
+          <p className="card__note">Asking the core…</p>
+        ) : (
+          <ul className="datalist">
+            <li>
+              <span>Browser engine</span>
+              <span className="datalist__v">
+                <StatusBadge
+                  label={browser.available ? 'Installed' : 'Missing'}
+                  kind={browser.available ? 'ok' : 'blocked'}
+                  title={browser.detail}
+                />
+              </span>
+            </li>
+            <li>
+              <span>Sites Jarvis may visit</span>
+              <span className="datalist__v">
+                {browser.allowAnyHost ? 'Any site' : browser.allowedHosts.join(', ') || 'None'}
+              </span>
+              <span className="datalist__note">
+                {browser.allowAnyHost ? 'Allowlist off' : 'Allowlist on'}
+              </span>
+            </li>
+            <li>
+              <span>This machine and your network</span>
+              <span className="datalist__v">
+                {browser.allowLoopback ? 'localhost allowed' : 'Blocked'}
+              </span>
+              <span className="datalist__note">Local network always blocked</span>
+            </li>
+            <li>
+              <span>Search engine</span>
+              <span className="datalist__v">{browser.searchEngine || '—'}</span>
+              <span className="datalist__note">Sees what you search for</span>
+            </li>
+            <li>
+              <span>Page currently open</span>
+              <span className="datalist__v">{browser.currentUrl || 'None'}</span>
+            </li>
+          </ul>
+        )}
+        <p className="card__note">
+          Editing the list here arrives with the permission system in Phase{' '}
+          {PHASE.permissions}. Until then it is read from config.toml, and this
+          card shows what the core actually loaded.
+        </p>
       </Card>
 
       <Card title="Stored data in this session">

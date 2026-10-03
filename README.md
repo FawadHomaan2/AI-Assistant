@@ -6,12 +6,18 @@ control of anything sensitive or destructive.
 
 Say **"Jarvis"** — or press `Ctrl+Space`.
 
-> **Current state: Phase 6 of 12 — plus the voice pipeline.**
+> **Current state: Phase 7 of 12 — the browser works.**
 > Jarvis works with your files, reads documents, starts installed programs,
-> manages windows, reports what is running, and diagnoses why the machine is
-> slow by measuring it.
+> manages windows, reports what is running, diagnoses why the machine is slow
+> by measuring it, and now browses the web — navigating, reading pages, and
+> filling in forms behind a confirmation gate.
 > Every action goes through a path jail, a policy engine and a confirmation
 > gate, and lands in a tamper-evident audit log.
+>
+> The browser runs in **Jarvis's own profile, never yours**, and can only
+> visit hosts on an allowlist — so a page that tells the model to go somewhere
+> else and paste what it just read is refused by the gate rather than by the
+> model's good judgement.
 >
 > **The Windows-specific parts of Phase 4 are written but unverified** — window
 > control and application launching call Win32 APIs that cannot be executed in

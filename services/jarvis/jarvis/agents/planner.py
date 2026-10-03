@@ -164,6 +164,41 @@ _WINDOW_ACTION = re.compile(
     re.IGNORECASE,
 )
 
+#: Top-level domains common enough that a bare "example.<tld>" is clearly an
+#: address. Deliberately not "any two letters": it would make "node.js",
+#: "etc.so" and a sentence ending in an abbreviation look like websites.
+_COMMON_TLDS = (
+    "com", "org", "net", "io", "dev", "co", "ai", "app", "gov", "edu",
+    "uk", "de", "fr", "ca", "au", "jp", "cn", "in", "eu", "us",
+    "info", "xyz", "me", "tv", "news", "blog", "shop", "store", "cloud", "tech",
+)  # fmt: skip
+
+_URL = re.compile(r"https?://\S+", re.IGNORECASE)
+_BARE_DOMAIN = re.compile(
+    r"\b(?P<domain>(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+(?:"
+    + "|".join(_COMMON_TLDS)
+    + r"))(?P<path>/\S*)?",
+    re.IGNORECASE,
+)
+
+#: "go to", "visit", "open the website", "pull up".
+_GOTO = re.compile(
+    r"\b(?:go to|goto|visit|browse(?:\s+to)?|navigate to|open|load|pull up|bring up)\b",
+    re.IGNORECASE,
+)
+
+#: "search the web for X", "google X", "look up X online".
+_WEB_SEARCH = re.compile(
+    r"\b(?:"
+    r"(?:do\s+a\s+)?(?:web\s+search|search(?:\s+the)?\s+(?:web|internet|online))"
+    r"(?:\s+for)?"
+    r"|google(?:\s+for)?"
+    r"|look\s+up"
+    r")\s+(?P<query>.+?)"
+    r"(?:\s+(?:on\s+(?:the\s+)?(?:web|internet)|online|please))?\s*[.?!]?\s*$",
+    re.IGNORECASE,
+)
+
 #: Words that mean the request is about files, not an application.
 _FILE_CONTEXT = re.compile(
     r"\b(folder|file|files|document|directory|pdf|docx?|xlsx?|csv|txt)\b", re.IGNORECASE
@@ -198,14 +233,52 @@ _OTHER_DOMAINS: tuple[tuple[re.Pattern[str], str], ...] = (
         "state but not reconfigure it.",
     ),
     (
-        re.compile(r"\b(browse|website|web ?site|google|search online|the web)\b", re.IGNORECASE),
-        "Browsing the web arrives in Phase 7.",
-    ),
-    (
         re.compile(r"\b(remind me|reminder|schedule)\b", re.IGNORECASE),
         "Reminders arrive with scheduled tasks after v1.",
     ),
 )
+
+
+def _web_step(text: str) -> Step | None:
+    """Map a web request to a browser or search step, or return None.
+
+    An explicit address goes straight to the browser. A search goes to the
+    search tool, which says which engine will see the words before sending
+    them. Anything with neither is not treated as a web request at all —
+    guessing a URL from a description is how an assistant ends up on a
+    typosquat.
+    """
+    if match := _URL.search(text):
+        url = match.group(0).rstrip(".,;:!?)\"'")
+        return Step(
+            "browser",
+            {"operation": "open", "url": url},
+            f"open {url} and read the page",
+        )
+
+    # A bare domain only counts when the sentence actually asks to go there;
+    # "my email is me@example.com" names a domain but is not a request.
+    if _FILE_CONTEXT.search(text):
+        return None
+
+    if _GOTO.search(text) and (match := _BARE_DOMAIN.search(text)):
+        target = match.group("domain") + (match.group("path") or "")
+        return Step(
+            "browser",
+            {"operation": "open", "url": target},
+            f"open {target} and read the page",
+        )
+
+    if match := _WEB_SEARCH.search(text):
+        query = (match.group("query") or "").strip(" \"'")
+        # "search the web" with nothing after it is not yet a search.
+        if len(query) >= 2:
+            return Step(
+                "websearch",
+                {"query": query},
+                f"search the web for {query!r}",
+            )
+    return None
 
 
 def plan(message: str) -> Plan:
@@ -325,6 +398,12 @@ def plan(message: str) -> Plan:
             "uptime": "uptime",
         }.get(topic, "summary")
         return Plan([Step("systeminfo", {"operation": operation}, f"read {topic} information")])
+
+    # Before the document and launch branches: "github.com" looks exactly like
+    # a filename with a three-letter extension, and "open github.com" must not
+    # be read as "launch an application called github.com".
+    if step := _web_step(text):
+        return Plan([step])
 
     if match := _DELETE.search(text):
         name = match.group("name").strip()

@@ -50,6 +50,10 @@ class Preview:
     blast_radius: str = ""
     #: Set when the preview found a reason the action cannot proceed.
     blocked: str = ""
+    #: Structured findings from the preview, for `risk_for` to read. Prose in
+    #: `blast_radius` is written for a person and must never be parsed; a tool
+    #: that needs to raise its own risk tier puts a flag here instead.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

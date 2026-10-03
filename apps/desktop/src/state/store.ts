@@ -36,7 +36,7 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 6;
+export const CURRENT_PHASE = 7;
 
 export interface QuickAction {
   id: string;
@@ -96,6 +96,13 @@ export const QUICK_ACTIONS: QuickAction[] = [
     hint: 'Group files with identical contents',
     availableIn: PHASE.fileTools,
     template: 'find duplicate files in downloads',
+  },
+  {
+    id: 'web-search',
+    label: 'Search the Web',
+    hint: 'Search the web and read the results',
+    availableIn: PHASE.browser,
+    template: 'search the web for ',
   },
   {
     id: 'voice',
@@ -260,13 +267,25 @@ export const useStore = create<AppState>((set, get) => {
       }
 
       case 'notice': {
-        // A capability the core does not have yet. Shown as a notice so it can
-        // never be mistaken for an answer.
+        // Either a capability that is not built yet, or an action the
+        // permission engine refused. Both are shown as notices so neither can
+        // be mistaken for an answer — but they carry different fields, and
+        // reading the wrong one used to throw and report the core as broken.
         state.pushMessage({ role: 'system', content: event.message, notice: true });
+        const refused = event.tool !== undefined;
         state.logActivity({
-          summary: `Not available: ${event.intent.replace('_', ' ')}`,
+          summary: refused
+            ? `Refused: ${event.tool}`
+            : `Not available: ${(event.intent ?? 'request').replace('_', ' ')}`,
           status: 'blocked',
-          detail: `Arrives in Phase ${event.available_in_phase}`,
+          tool: event.tool,
+          detail: refused
+            ? [event.denialCode, (event.missingScopes ?? []).join(', ')]
+                .filter(Boolean)
+                .join(' · ') || event.message
+            : event.available_in_phase
+              ? `Arrives in Phase ${event.available_in_phase}`
+              : event.message,
         });
         set({ busy: false, streamingId: null });
         break;
@@ -379,9 +398,11 @@ export const useStore = create<AppState>((set, get) => {
         content:
           "I'm Jarvis. The core is connected and I can hold a conversation — messages " +
           'stream from whichever model provider you configure in Settings.\n\n' +
-          "I can't act on your computer yet. Files, applications, the system and " +
-          'security monitoring arrive in later phases, and until then I say so instead ' +
-          'of pretending otherwise.',
+          'I can work with your files, launch and control applications, see what is ' +
+          'running, measure this machine, take screenshots and browse the web. ' +
+          'Changing Windows settings, checking your security and remembering things ' +
+          'between conversations are not built yet — and until they are, I say so ' +
+          'instead of pretending otherwise.',
         createdAt: Date.now(),
       },
     ],

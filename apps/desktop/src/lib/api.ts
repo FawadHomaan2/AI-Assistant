@@ -166,6 +166,38 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
   };
 }
 
+export interface BrowserStatus {
+  available: boolean;
+  detail: string;
+  running: boolean;
+  currentUrl: string;
+  allowedHosts: string[];
+  allowAnyHost: boolean;
+  allowLoopback: boolean;
+  headless: boolean;
+  searchEngine: string;
+}
+
+export async function browserStatus(): Promise<ApiResult<BrowserStatus>> {
+  const res = await request<Record<string, unknown>>('/browser/status');
+  if (!res.ok) return res;
+  const raw = res.value;
+  return {
+    ok: true,
+    value: {
+      available: Boolean(raw.available),
+      detail: String(raw.detail ?? ''),
+      running: Boolean(raw.running),
+      currentUrl: String(raw.currentUrl ?? ''),
+      allowedHosts: (raw.allowedHosts as string[]) ?? [],
+      allowAnyHost: Boolean(raw.allowAnyHost),
+      allowLoopback: Boolean(raw.allowLoopback),
+      headless: Boolean(raw.headless),
+      searchEngine: String(raw.searchEngine ?? ''),
+    },
+  };
+}
+
 export function auditLog(
   limit = 100,
 ): Promise<ApiResult<{ entries: Record<string, unknown>[]; chain_intact: boolean }>> {

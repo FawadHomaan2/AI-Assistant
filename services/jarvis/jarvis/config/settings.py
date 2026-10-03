@@ -102,6 +102,50 @@ class VoiceSettings(BaseModel):
     push_to_talk: bool = True
 
 
+class BrowserConfig(BaseModel):
+    """Web browsing. Off-by-default in the ways that matter.
+
+    `allowed_hosts` is the important one. Without it, a page Jarvis reads could
+    tell the model to go somewhere else and paste what it just read — the
+    classic prompt-injection exfiltration route. An allowlist makes that
+    impossible rather than unlikely.
+    """
+
+    enabled: bool = True
+    headless: bool = True
+    #: Sites Jarvis may visit. The default search engine is included so web
+    #: search works on a fresh install; nothing else is.
+    allowed_hosts: list[str] = Field(default_factory=lambda: ["duckduckgo.com"])
+    #: Turning this on removes the allowlist entirely. Named to be read twice.
+    allow_any_host: bool = False
+    #: Permit `localhost` and `127.x` — for a developer's own dev server. Off by
+    #: default because it lets a web page reach services on this machine.
+    allow_loopback: bool = False
+    search_engine: Literal["duckduckgo", "bing", "startpage"] = "duckduckgo"
+    #: An already-installed Chromium or Edge, instead of Playwright's download.
+    executable_path: str = ""
+    timeout_seconds: float = Field(default=20.0, gt=0, le=180)
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _clean_hosts(cls, v: list[str]) -> list[str]:
+        """Accept what people actually type, store the host only.
+
+        "https://example.com/" and "EXAMPLE.COM" both mean example.com. Keeping
+        the raw string would silently fail to match.
+        """
+        out: list[str] = []
+        for raw in v:
+            host = (raw or "").strip().lower()
+            if not host:
+                continue
+            host = host.split("://", 1)[-1].split("/", 1)[0].split("@")[-1]
+            host = host.split(":")[0].strip(".")
+            if host and host not in out:
+                out.append(host)
+        return out
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="JARVIS_",
@@ -114,6 +158,7 @@ class Settings(BaseSettings):
     server: ServerSettings = Field(default_factory=ServerSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
 
     def provider(self, name: str | None = None) -> tuple[str, ProviderSettings]:
         """Resolve a provider by name, falling back to the default."""
@@ -194,6 +239,26 @@ kind = "dev_echo"
 [voice]
 enabled = false
 wake_word = "hey_jarvis"
+
+[browser]
+enabled = true
+headless = true
+search_engine = "duckduckgo"
+
+# Sites Jarvis may visit. This list is what stops a page it reads from aiming
+# it somewhere else, so keep it short and deliberate.
+allowed_hosts = ["duckduckgo.com"]
+
+# Removes the allowlist above. Only turn this on if you understand that a web
+# page Jarvis reads can then direct it to any site on the internet.
+allow_any_host = false
+
+# Allows localhost and 127.0.0.1 — useful for your own dev server, and a way
+# for a web page to reach services on this machine. Off unless you need it.
+allow_loopback = false
+
+# Point at an installed Chromium or Edge to skip Playwright's own download:
+# executable_path = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
 """
 
 

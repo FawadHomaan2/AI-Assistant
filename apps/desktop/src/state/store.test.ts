@@ -308,8 +308,8 @@ describe('store: voice', () => {
 describe('phase gating', () => {
   beforeEach(reset);
 
-  it('shipped phase matches the voice phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.voice);
+  it('shipped phase matches the browser phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.browser);
   });
 
   // An action that claims to be available must have something behind it.
@@ -382,6 +382,30 @@ describe('store: streamed agent events', () => {
     });
     expect(useStore.getState().messages).toHaveLength(0);
     expect(useStore.getState().activity.at(-1)?.summary).toContain('computer task');
+  });
+
+  // Regression: a refusal notice carries `tool`, not `intent`. Reading
+  // `event.intent.replace(...)` threw, and the thrown error was then reported
+  // as "the core sent a message this build could not read" — blaming the core
+  // for a bug in this file.
+  it('a permission refusal renders without crashing the handler', () => {
+    handle({
+      type: 'notice',
+      message: 'This needs permission Jarvis does not have: Drive a web browser.',
+      tool: 'browser',
+      denialCode: 'missing_scope',
+      missingScopes: ['browser.use'],
+      blocked: true,
+    });
+    const last = useStore.getState().messages.at(-1);
+    expect(last?.role).toBe('system');
+    expect(last?.notice).toBe(true);
+    expect(useStore.getState().busy).toBe(false);
+    const entry = useStore.getState().activity.at(0);
+    expect(entry?.summary).toBe('Refused: browser');
+    expect(entry?.detail).toContain('browser.use');
+    // No "Phase undefined" anywhere.
+    expect(JSON.stringify(entry)).not.toContain('undefined');
   });
 
   // A capability notice must be visibly distinct from an answer.

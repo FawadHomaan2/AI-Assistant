@@ -948,7 +948,14 @@ Stated plainly, because the honest version of this project has limits:
     you in your real accounts without an explicit, separate decision.
 11. **Event Log reads** for security events (e.g. failed logons, 4625) need admin
     and the relevant audit policy enabled; often unavailable on Home editions.
-12. **Cross-platform build caveat:** this repository is authored in a Linux
+12. **Web browsing is allowlisted by host, and the list starts almost empty.**
+    Only the default search engine is permitted on a fresh install, so "go to
+    example.com" is refused until you add the host. That is the intended
+    trade-off: the allowlist is what makes a prompt-injected page unable to
+    redirect Jarvis, and an assistant that browses anywhere by default has no
+    defence against it beyond the model's own judgement. Loopback is a separate
+    switch, off by default; the private LAN ranges are never navigable.
+13. **Cross-platform build caveat:** this repository is authored in a Linux
     container. Platform-neutral code is fully tested here; Win32/UIA/WMI paths,
     the Rust/WebView2 shell build, and the NSIS installer **can only be compiled
     and verified on Windows**. Phase gates for those parts are explicitly

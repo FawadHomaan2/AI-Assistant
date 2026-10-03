@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from jarvis.agents.executor import Executor
 from jarvis.agents.orchestrator import Orchestrator
 from jarvis.ai.gateway import Gateway
+from jarvis.browser.session import BrowserSession, BrowserSettings
 from jarvis.config.settings import Settings
 from jarvis.db.engine import Database
 from jarvis.db.repositories import AuditRepository, SessionRepository, TurnRepository
@@ -21,6 +22,7 @@ from jarvis.governance.policy import Policy
 from jarvis.governance.scopes import ScopeGrants
 from jarvis.platform_ import backends as os_backends
 from jarvis.tools.applications import ApplicationTool
+from jarvis.tools.browser import BrowserTool
 from jarvis.tools.capture import ClipboardTool, NotificationTool, ScreenshotTool
 from jarvis.tools.diagnostics_tool import DiagnosticsTool
 from jarvis.tools.documents import DocumentTool
@@ -30,6 +32,7 @@ from jarvis.tools.powershell import PowerShellTool
 from jarvis.tools.processes import ProcessTool
 from jarvis.tools.registry import ToolRegistry
 from jarvis.tools.systeminfo import SystemInfoTool
+from jarvis.tools.websearch import WebSearchTool
 from jarvis.tools.windows_tool import WindowTool
 from jarvis.transport import routes
 from jarvis.transport.auth import AuthMiddleware
@@ -64,6 +67,7 @@ class Context:
     registry: ToolRegistry
     executor: Executor
     voice: VoicePipeline
+    browser: BrowserSession
     version: str = VERSION
 
 
@@ -81,6 +85,19 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     policy = Policy(ScopeGrants(), mode=settings.mode)
     consent = ConsentBroker()
 
+    # One browser for the process. Started lazily on first use, so an install
+    # without Chromium costs nothing until something actually browses.
+    browser = BrowserSession(
+        BrowserSettings(
+            headless=settings.browser.headless,
+            allowed_hosts=set(settings.browser.allowed_hosts),
+            allow_any_host=settings.browser.allow_any_host,
+            allow_loopback=settings.browser.allow_loopback,
+            executable_path=settings.browser.executable_path,
+            timeout_ms=int(settings.browser.timeout_seconds * 1000),
+        )
+    )
+
     adapters = os_backends()
     registry = ToolRegistry()
     registry.register(FileSystemTool(jail))
@@ -95,6 +112,9 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     registry.register(ClipboardTool())
     registry.register(NotificationTool())
     registry.register(PowerShellTool())
+    if settings.browser.enabled:
+        registry.register(BrowserTool(browser))
+        registry.register(WebSearchTool(browser, settings.browser.search_engine))
 
     executor = Executor(registry, policy, consent, audit, estop)
 
@@ -127,6 +147,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         registry=registry,
         executor=executor,
         voice=voice,
+        browser=browser,
     )
 
 
@@ -141,6 +162,8 @@ def create_app(ctx: Context) -> FastAPI:
         )
         yield
         await ctx.gateway.aclose()
+        # Chromium is a child process; leaving it running would outlive the core.
+        await ctx.browser.close()
         ctx.db.close()
         log.info("core stopped")
 

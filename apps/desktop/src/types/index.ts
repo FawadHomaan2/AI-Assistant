@@ -149,8 +149,19 @@ export type AgentEvent =
   | {
       type: 'notice';
       message: string;
-      intent: IntentId;
-      available_in_phase: number;
+      /**
+       * Notices arrive from two places and carry different fields. The
+       * orchestrator sends "this capability is not built yet" with an intent
+       * and the phase that delivers it; the executor sends "this action was
+       * refused" with the tool and why. Everything but `message` is therefore
+       * optional, and reading one shape's field off the other is a crash.
+       */
+      intent?: IntentId;
+      available_in_phase?: number;
+      tool?: string;
+      denialCode?: string;
+      missingScopes?: string[];
+      blocked?: boolean;
       session_id?: string;
     }
   | { type: 'error'; code: string; message: string; provider?: string; session_id?: string }

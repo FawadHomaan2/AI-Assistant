@@ -63,6 +63,28 @@ jobs:
       - run: mypy jarvis
       - run: pytest -q
 
+  browser:
+    name: Browser gate (real Chromium)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/jarvis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -e ".[dev,browser]"
+      # Its own job because it downloads a browser. The Phase 7 gate is
+      # "navigate, extract, and submit a form behind a confirmation", and a
+      # stubbed browser cannot demonstrate any of it — these tests drive a real
+      # Chromium against a real HTTP server, so they catch the things that only
+      # break for real: selector behaviour, what innerText returns, and whether
+      # a submit actually reaches the server.
+      - run: playwright install --with-deps chromium
+      - run: pytest tests/test_phase7_e2e.py tests/test_phase7_browser.py tests/test_phase7_urls.py -q
+
   shell:
     name: Rust shell (clippy · test)
     runs-on: ubuntu-latest

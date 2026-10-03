@@ -60,7 +60,7 @@ class TestDeclining:
         ("message", "phase_text"),
         [
             ("turn off bluetooth", "not built yet"),
-            ("search the web for react docs", "Phase 7"),
+            ("check my startup programs", "Phase 9"),
         ],
     )
     def test_other_domains_name_the_right_missing_capability(
@@ -169,3 +169,84 @@ class TestApplicationsAndWindows:
         result = plan("check my startup programs")
         assert result.steps == []
         assert "Phase 9" in result.unsupported
+
+
+class TestWeb:
+    """Browsing and searching, added in Phase 7."""
+
+    @pytest.mark.parametrize(
+        ("message", "url"),
+        [
+            ("go to example.com", "example.com"),
+            (
+                "visit https://news.ycombinator.com/news?p=2",
+                "https://news.ycombinator.com/news?p=2",
+            ),
+            ("open github.com", "github.com"),
+            ("pull up wikipedia.org", "wikipedia.org"),
+            ("navigate to example.com/pricing", "example.com/pricing"),
+            ("browse to https://example.org.", "https://example.org"),
+        ],
+    )
+    def test_addresses_go_to_the_browser(self, message: str, url: str) -> None:
+        steps = plan(message).steps
+        assert steps[0].tool == "browser"
+        assert steps[0].args == {"operation": "open", "url": url}
+
+    def test_a_domain_is_not_read_as_a_filename(self) -> None:
+        """Regression: "github.com" matched the "name.ext" document pattern.
+
+        The document branch saw a three-letter extension and tried to read
+        "github.com" off the disk, where the path jail then refused it — a
+        confusing answer to a perfectly clear request.
+        """
+        steps = plan("open github.com").steps
+        assert steps[0].tool == "browser"
+
+    def test_a_domain_is_not_read_as_an_application(self) -> None:
+        assert plan("open example.com").steps[0].tool == "browser"
+
+    @pytest.mark.parametrize(
+        ("message", "query"),
+        [
+            ("search the web for best laptops 2026", "best laptops 2026"),
+            ("search online for quiet keyboards", "quiet keyboards"),
+            ("google the weather in Dhaka", "the weather in Dhaka"),
+            ("look up rust async traits online", "rust async traits"),
+            ("do a web search for tauri vs electron", "tauri vs electron"),
+            ("search the internet for python 3.14 release notes", "python 3.14 release notes"),
+        ],
+    )
+    def test_searches_go_to_the_search_tool(self, message: str, query: str) -> None:
+        steps = plan(message).steps
+        assert steps[0].tool == "websearch"
+        assert steps[0].args == {"query": query}
+
+    def test_a_search_with_no_terms_is_not_a_search(self) -> None:
+        assert plan("search the web").steps == []
+
+    def test_a_domain_mentioned_in_passing_is_not_a_request(self) -> None:
+        """ "my email is me@example.com" names a domain but asks for nothing."""
+        assert plan("my email is me@example.com").steps == []
+
+    def test_file_requests_win_over_domain_lookalikes(self) -> None:
+        """ "open my notes.io file" is a document, whatever ".io" looks like."""
+        steps = plan("open my notes.io file").steps
+        assert steps[0].tool == "document"
+
+    def test_looking_for_files_is_not_a_web_search(self) -> None:
+        """Regression: "look for" matched the web-search verb list.
+
+        "look for my CV" is about this computer. Only "look up" is the web.
+        """
+        assert all(s.tool != "websearch" for s in plan("look for my CV").steps)
+
+    def test_finding_files_still_searches_the_disk(self) -> None:
+        steps = plan("find my pdfs in documents").steps
+        assert steps[0].tool == "filesystem"
+        assert steps[0].args["operation"] == "search"
+
+    def test_web_browsing_is_no_longer_reported_as_unbuilt(self) -> None:
+        """Phase 7 shipped it, so the "arrives in Phase 7" notice must be gone."""
+        for message in ("go to example.com", "search the web for cats"):
+            assert "Phase 7" not in plan(message).unsupported

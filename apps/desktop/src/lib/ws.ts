@@ -67,13 +67,28 @@ export class CoreSocket {
     };
 
     socket.onmessage = (event) => {
+      // Parsing and handling are caught separately. Lumping them together
+      // reported a crash in this build as "the core sent something unreadable",
+      // which blames the wrong component and sends you looking in the wrong
+      // place.
+      let parsed: AgentEvent;
       try {
-        this.handlers.onEvent(JSON.parse(String(event.data)) as AgentEvent);
+        parsed = JSON.parse(String(event.data)) as AgentEvent;
       } catch {
         this.handlers.onEvent({
           type: 'error',
           code: 'jarvis.bad_event',
           message: 'The core sent a message this build could not read.',
+        });
+        return;
+      }
+      try {
+        this.handlers.onEvent(parsed);
+      } catch (err) {
+        this.handlers.onEvent({
+          type: 'error',
+          code: 'jarvis.event_handler_failed',
+          message: `Jarvis received a "${parsed.type}" event but failed to display it: ${String(err)}`,
         });
       }
     };

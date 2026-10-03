@@ -6,6 +6,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
+from jarvis.browser.session import BrowserSession
 from jarvis.config import secrets
 from jarvis.governance.consent import ConsentAnswer
 from jarvis.governance.scopes import Scope
@@ -166,6 +167,27 @@ async def voice_status(request: Request) -> dict[str, object]:
             "wakeWord": ctx.settings.voice.wake_word,
             "pushToTalk": ctx.settings.voice.push_to_talk,
         },
+    }
+
+
+@router.get("/browser/status")
+async def browser_status(request: Request) -> dict[str, object]:
+    """What the browser may reach, so the interface can show it rather than
+    describe an intended default that may not match the config file."""
+    ctx = _ctx(request)
+    settings = ctx.browser.settings
+    available, detail = BrowserSession.availability(settings.executable_path)
+    return {
+        "available": available,
+        "detail": detail,
+        "running": bool(await ctx.browser.current_url()),
+        "currentUrl": await ctx.browser.current_url(),
+        "allowedHosts": sorted(settings.allowed_hosts),
+        "allowAnyHost": settings.allow_any_host,
+        "allowLoopback": settings.allow_loopback,
+        "headless": settings.headless,
+        "searchEngine": ctx.settings.browser.search_engine,
+        "ownProfile": True,
     }
 
 

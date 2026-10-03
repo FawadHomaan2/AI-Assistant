@@ -54,6 +54,16 @@ _ACTION_VERBS = (
     "press ",
     "download",
     "upload",
+    "go to ",
+    "goto ",
+    "visit ",
+    "browse ",
+    "navigate to",
+    "google ",
+    "look up",
+    "search the web",
+    "search online",
+    "pull up",
     "install",
     "uninstall",
     "find ",
@@ -167,6 +177,23 @@ _MEMORY = (
     "stop remembering",
 )
 
+#: Signals that a request is about the web rather than this machine. Checked
+#: before the file branches so "go to example.com" is not read as a filename.
+_WEB = re.compile(
+    r"\b(?:"
+    r"https?://"
+    r"|www\."
+    r"|(?:go to|goto|visit|browse(?: to)?|navigate to|open|load|pull up)\s+"
+    r"(?:the\s+)?(?:web\s?site|web\s?page|url|link|[\w\-]+\.(?:com|org|net|io|dev|co|ai|app|gov|edu|uk))"
+    r"|google(?:\s+(?:for|it|the))?\s"
+    r"|search\s+(?:the\s+)?(?:web|internet|online)"
+    r"|web\s+search"
+    r"|look\s+up\b.{0,60}?\b(?:online|on the web|on the internet)"
+    r"|\bon\s+(?:the\s+)?(?:web|internet)\b"
+    r")",
+    re.IGNORECASE,
+)
+
 _FILE_NOUNS = (
     "file",
     "files",
@@ -229,6 +256,17 @@ def route(message: str) -> Route:
         ):
             return Route(Intent.CHAT, 0.7, "a general question that mentions security", signals)
         return Route(Intent.SECURITY, 0.8, "asks about this machine's security state", signals)
+
+    # Web requests are computer tasks, but they must be recognised before the
+    # machine-condition and file branches: "open github.com" is not a file, and
+    # "search the web for disk space tools" is not a diagnostic.
+    if _WEB.search(text):
+        return Route(
+            Intent.COMPUTER_TASK,
+            0.85,
+            "asks Jarvis to visit or search the web",
+            ["web request"],
+        )
 
     if _MACHINE_QUESTION.search(text):
         return Route(

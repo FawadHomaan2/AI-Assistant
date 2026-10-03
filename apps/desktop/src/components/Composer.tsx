@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { VoiceButton } from './VoiceButton';
 import { useStore } from '@/state/store';
@@ -10,7 +10,18 @@ export function Composer() {
   const sendMessage = useStore((s) => s.sendMessage);
   const stopped = useStore((s) => s.stopped);
   const busy = useStore((s) => s.busy);
+  const draft = useStore((s) => s.draft);
+  const setDraft = useStore((s) => s.setDraft);
   const ref = useRef<HTMLTextAreaElement>(null);
+
+  // A quick action pre-fills the composer and focuses it, so the user edits the
+  // request before sending rather than firing a guessed command.
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft);
+    setDraft('');
+    ref.current?.focus();
+  }, [draft, setDraft]);
 
   const submit = () => {
     if (!text.trim() || busy) return;

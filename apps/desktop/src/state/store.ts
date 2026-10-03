@@ -36,22 +36,40 @@ export const PHASE = {
 } as const;
 
 /** The phase this build has actually shipped. */
-export const CURRENT_PHASE = 2;
+export const CURRENT_PHASE = 3;
 
 export interface QuickAction {
   id: string;
   label: string;
   hint: string;
   availableIn: number;
+  /**
+   * Message put into the composer when the action is available. It is a starting
+   * point the user edits rather than a command fired blind — a one-click action
+   * that guesses at a folder is how the wrong files get touched.
+   */
+  template?: string;
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
   { id: 'open-apps', label: 'Open Apps', hint: 'Launch an application by name', availableIn: PHASE.appControl },
-  { id: 'search-files', label: 'Search Files', hint: 'Find files by name, type or date', availableIn: PHASE.fileTools },
+  {
+    id: 'search-files',
+    label: 'Search Files',
+    hint: 'Find files by name, type or date',
+    availableIn: PHASE.fileTools,
+    template: 'find my pdf files in documents',
+  },
   { id: 'screenshot', label: 'Screenshot', hint: 'Capture the screen or a window', availableIn: PHASE.systemTools },
   { id: 'security-scan', label: 'Security Scan', hint: 'Check Defender, firewall, startup items', availableIn: PHASE.security },
   { id: 'system-check', label: 'System Check', hint: 'Diagnose CPU, memory, disk and network', availableIn: PHASE.systemTools },
-  { id: 'clean-downloads', label: 'Clean Downloads', hint: 'Sort and de-duplicate your Downloads folder', availableIn: PHASE.fileTools },
+  {
+    id: 'find-duplicates',
+    label: 'Find Duplicates',
+    hint: 'Group files with identical contents',
+    availableIn: PHASE.fileTools,
+    template: 'find duplicate files in downloads',
+  },
   { id: 'voice', label: 'Voice Assistant', hint: 'Talk to Jarvis hands-free', availableIn: PHASE.voice },
 ];
 
@@ -81,6 +99,9 @@ interface AppState {
   // ── Chat ────────────────────────────────────────────────────────────────
   messages: ChatMessage[];
   busy: boolean;
+  /** Pre-filled composer text, set by an available quick action. */
+  draft: string;
+  setDraft: (text: string) => void;
   /** Id of the assistant message currently being streamed into. */
   streamingId: string | null;
   sendMessage: (text: string) => void;
@@ -146,6 +167,59 @@ export const useStore = create<AppState>((set, get) => {
           const newId = state.pushMessage({ role: 'assistant', content: event.text });
           set({ streamingId: newId });
         }
+        break;
+      }
+
+      case 'plan': {
+        if (event.unsupported) break; // the notice that follows carries the message
+        state.logActivity({
+          summary: `Planned ${event.steps.length} step${event.steps.length === 1 ? '' : 's'}`,
+          status: 'running',
+          detail: event.steps.map((s) => s.rationale).join('; '),
+        });
+        break;
+      }
+
+      case 'tool.planned': {
+        state.logActivity({
+          summary: `${event.tool}.${event.operation} — ${event.verdict}`,
+          status: event.verdict === 'deny' ? 'blocked' : 'running',
+          tool: event.tool,
+          detail: `${event.summary} · ${event.risk} risk · ${event.reason}`,
+        });
+        break;
+      }
+
+      case 'tool.result': {
+        state.pushMessage({
+          role: 'tool',
+          content: event.summary,
+          tool: {
+            name: `${event.tool}.${event.operation}`,
+            status: event.ok ? 'succeeded' : 'failed',
+            risk: event.risk,
+            detail: event.changes.join('\n') || undefined,
+          },
+        });
+        state.logActivity({
+          summary: event.summary,
+          status: event.ok ? 'succeeded' : 'failed',
+          tool: event.tool,
+          detail: event.verified
+            ? `${event.elapsedMs} ms · verified`
+            : `${event.elapsedMs} ms · NOT verified — the change could not be confirmed`,
+        });
+        break;
+      }
+
+      case 'consent.request': {
+        // The core is waiting on this answer, so show it immediately.
+        set({ consent: { ...event, id: event.id } });
+        state.logActivity({
+          summary: `Confirmation requested: ${event.title}`,
+          status: 'pending',
+          detail: `${event.affectedCount} item(s) · ${event.risk} risk`,
+        });
         break;
       }
 
@@ -275,6 +349,8 @@ export const useStore = create<AppState>((set, get) => {
     ],
     busy: false,
     streamingId: null,
+    draft: '',
+    setDraft: (draft) => set({ draft }),
     handleEvent: applyEvent,
 
     pushMessage: (m) => {
@@ -342,28 +418,42 @@ export const useStore = create<AppState>((set, get) => {
     clearActivity: () => set({ activity: [] }),
 
     consent: null,
-    requestConsent: (r) => set({ consent: { ...r, id: nextId('consent') } }),
+    /** Used by the Settings preview; real prompts arrive from the core. */
+    requestConsent: (r) => set({ consent: { ...r, id: nextId('consent'), local: true } }),
     resolveConsent: (d) => {
       const pending = get().consent;
       if (!pending) return;
       set({ consent: null });
       const status: ActionStatus = d.decision === 'confirm' ? 'succeeded' : 'cancelled';
       get().logActivity({
-        summary: `${d.decision === 'confirm' ? 'Approved' : 'Cancelled'}: ${pending.title}`,
+        summary: `${d.decision === 'confirm' ? 'Approved' : 'Declined'}: ${pending.title}`,
         status,
         detail:
           d.decision === 'confirm' && d.remember !== 'no'
             ? `Remembered for: ${d.remember}`
             : pending.summary,
       });
-      get().pushMessage({
-        role: 'system',
-        notice: true,
-        content:
-          d.decision === 'confirm'
-            ? `You approved "${pending.title}". No tool ran — tools arrive in Phase ${PHASE.fileTools}; this was the consent flow only.`
-            : `You cancelled "${pending.title}". Nothing happened.`,
+
+      // A preview prompt has no core waiting on it; a real one does.
+      if (pending.local) {
+        get().pushMessage({
+          role: 'system',
+          notice: true,
+          content:
+            d.decision === 'confirm'
+              ? `You approved "${pending.title}". This was a preview of the confirmation dialog — no tool ran.`
+              : `You cancelled "${pending.title}". Nothing happened.`,
+        });
+        return;
+      }
+
+      ensureSocket().send({
+        type: 'consent.response',
+        id: pending.id,
+        approved: d.decision === 'confirm',
+        remember: d.decision === 'confirm' ? d.remember : 'no',
       });
+      if (d.decision !== 'confirm') set({ busy: false });
     },
 
     system: { state: 'loading' },

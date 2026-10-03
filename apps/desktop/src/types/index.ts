@@ -64,6 +64,11 @@ export interface ConsentRequest {
   blastRadius: string;
   /** Tier 4-5 require typing this phrase before Confirm enables. */
   confirmPhrase?: string;
+  /**
+   * True for a prompt generated in the UI (the Settings preview) rather than by
+   * the core. A local prompt has nothing waiting on its answer.
+   */
+  local?: boolean;
   /** Scoped-remember is never offered above tier 3. */
   allowRemember: boolean;
 }
@@ -121,6 +126,13 @@ export interface CoreEndpoint {
 /** What the router decided a message was asking for. */
 export type IntentId = 'chat' | 'computer_task' | 'diagnostic' | 'security' | 'memory';
 
+/** A step the planner produced. */
+export interface PlanStep {
+  tool: string;
+  args: Record<string, unknown>;
+  rationale: string;
+}
+
 /** Streamed agent events. Mirrors jarvis/agents/types.py. */
 export type AgentEvent =
   | { type: 'turn.start'; turn_id: string; session_id: string }
@@ -154,6 +166,37 @@ export type AgentEvent =
       stop_reason?: string | null;
       session_id?: string;
     }
+  | {
+      type: 'plan';
+      steps: PlanStep[];
+      unsupported: string;
+      session_id?: string;
+    }
+  | {
+      type: 'tool.planned';
+      tool: string;
+      operation: string;
+      summary: string;
+      affected: number;
+      risk: RiskTier;
+      verdict: 'allow' | 'confirm' | 'deny';
+      reason: string;
+      session_id?: string;
+    }
+  | {
+      type: 'tool.result';
+      tool: string;
+      operation: string;
+      ok: boolean;
+      summary: string;
+      changes: string[];
+      data: Record<string, unknown>;
+      verified: boolean;
+      elapsedMs: number;
+      risk: RiskTier;
+      session_id?: string;
+    }
+  | ({ type: 'consent.request'; session_id?: string } & ConsentRequest)
   | { type: 'pong' };
 
 export interface ProviderInfo {

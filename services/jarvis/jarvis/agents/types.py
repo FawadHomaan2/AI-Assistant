@@ -43,6 +43,11 @@ class EventType(StrEnum):
     NOTICE = "notice"
     ERROR = "error"
     TURN_END = "turn.end"
+    # Phase 3: tool execution.
+    PLAN = "plan"
+    TOOL_PLANNED = "tool.planned"
+    TOOL_RESULT = "tool.result"
+    CONSENT_REQUEST = "consent.request"
 
 
 @dataclass

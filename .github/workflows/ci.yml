@@ -54,7 +54,10 @@ jobs:
           cache: pip
       # No `secrets` extra: the core must import and pass its tests without a
       # desktop credential backend, which is exactly the headless CI case.
-      - run: pip install -e ".[dev]"
+      # The documents extra is included so the PDF/Word/Excel readers are
+      # exercised; the secrets extra is not, because headless CI has no
+      # credential backend and the core must pass without one.
+      - run: pip install -e ".[dev,documents]"
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy jarvis

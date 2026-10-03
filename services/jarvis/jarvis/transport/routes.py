@@ -7,6 +7,9 @@ import json
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from jarvis.config import secrets
+from jarvis.governance.consent import ConsentAnswer
+from jarvis.governance.scopes import Scope
+from jarvis.tools.documents import DocumentTool
 from jarvis.transport import auth
 from jarvis.transport.schemas import (
     ChatRequest,
@@ -116,10 +119,54 @@ async def audit_log(request: Request, limit: int = 100) -> dict[str, object]:
     }
 
 
+@router.get("/tools")
+async def tools(request: Request) -> list[dict[str, object]]:
+    specs: list[dict[str, object]] = _ctx(request).registry.specs()
+    return specs
+
+
+@router.get("/permissions")
+async def permissions(request: Request) -> dict[str, object]:
+    ctx = _ctx(request)
+    return {"policy": ctx.policy.describe(), "paths": ctx.jail.describe()}
+
+
+@router.post("/permissions/scopes/{scope}")
+async def grant_scope(request: Request, scope: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    try:
+        ctx.policy.grants.grant(Scope(scope))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown scope {scope!r}") from exc
+    log.info("scope granted", scope=scope)
+    return {"granted": True, "scopes": ctx.policy.grants.describe()}
+
+
+@router.delete("/permissions/scopes/{scope}")
+async def revoke_scope(request: Request, scope: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    try:
+        ctx.policy.grants.revoke(Scope(scope))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown scope {scope!r}") from exc
+    log.info("scope revoked", scope=scope)
+    return {"granted": False, "scopes": ctx.policy.grants.describe()}
+
+
+@router.get("/documents/formats")
+async def document_formats(request: Request) -> list[dict[str, object]]:
+    del request
+    formats: list[dict[str, object]] = DocumentTool.formats()
+    return formats
+
+
 @router.post("/emergency-stop")
-async def emergency_stop(request: Request) -> dict[str, bool]:
-    _ctx(request).estop.engage("requested via API")
-    return {"engaged": True}
+async def emergency_stop(request: Request) -> dict[str, object]:
+    ctx = _ctx(request)
+    ctx.estop.engage("requested via API")
+    # Anything waiting on a confirmation is declined, so no action stays armed.
+    cancelled = ctx.consent.cancel_all("emergency stop")
+    return {"engaged": True, "cancelledPrompts": cancelled}
 
 
 @router.delete("/emergency-stop")
@@ -159,6 +206,12 @@ async def websocket(ws: WebSocket) -> None:
     await ws.accept()
     log.info("websocket connected")
 
+    async def show_consent(req: object) -> None:
+        """Push a confirmation prompt to this UI and let the broker wait."""
+        await ws.send_json({"type": "consent.request", **req.to_dict()})  # type: ignore[attr-defined]
+
+    ctx.consent.set_prompt(show_consent)
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -173,6 +226,17 @@ async def websocket(ws: WebSocket) -> None:
             kind = msg.get("type")
             if kind == "ping":
                 await ws.send_json({"type": "pong"})
+                continue
+            if kind == "consent.response":
+                delivered = ctx.consent.resolve(
+                    str(msg.get("id", "")),
+                    ConsentAnswer(
+                        approved=bool(msg.get("approved")),
+                        remember=str(msg.get("remember", "no")),  # type: ignore[arg-type]
+                    ),
+                )
+                if not delivered:
+                    log.warning("consent answer had nothing waiting", consent_id=msg.get("id"))
                 continue
             if kind != "chat":
                 await ws.send_json(

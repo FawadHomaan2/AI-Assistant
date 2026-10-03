@@ -195,12 +195,56 @@ describe('store: consent', () => {
     expect(useStore.getState().consent?.id).toMatch(/^consent_/);
   });
 
-  it('confirm logs success and states that no tool ran', () => {
+  it('confirm on a preview prompt says no tool ran', () => {
     useStore.getState().requestConsent(req);
     useStore.getState().resolveConsent({ decision: 'confirm', remember: 'session' });
     expect(useStore.getState().consent).toBeNull();
     expect(useStore.getState().activity.at(-1)?.status).toBe('succeeded');
-    expect(useStore.getState().messages.at(-1)?.content).toContain('No tool ran');
+    expect(useStore.getState().messages.at(-1)?.content).toContain('no tool ran');
+  });
+
+  // A prompt from the core has an action waiting on the answer, so it must be
+  // sent back rather than answered locally.
+  it('a core prompt is answered over the socket, not locally', () => {
+    connect();
+    useStore.getState().handleEvent({
+      type: 'consent.request',
+      id: 'consent_1',
+      title: 'Move 37 files',
+      summary: 'Sort Downloads by type',
+      risk: 'medium',
+      origin: 'test',
+      targets: ['a'],
+      affectedCount: 37,
+      reversible: 'undoable',
+      blastRadius: 'Files stay inside Downloads.',
+      allowRemember: true,
+    });
+    expect(useStore.getState().consent?.local).toBeUndefined();
+    useStore.getState().resolveConsent({ decision: 'confirm', remember: 'no' });
+    // No local "no tool ran" message: the core is doing the work.
+    expect(useStore.getState().messages.at(-1)?.content ?? '').not.toContain('no tool ran');
+  });
+
+  it('declining a core prompt clears busy', () => {
+    connect();
+    useStore.setState({ busy: true });
+    useStore.getState().handleEvent({
+      type: 'consent.request',
+      id: 'consent_2',
+      title: 'Delete 3 files',
+      summary: 'test',
+      risk: 'high',
+      origin: 'test',
+      targets: ['a'],
+      affectedCount: 3,
+      reversible: 'permanent',
+      blastRadius: 'test',
+      allowRemember: false,
+    });
+    useStore.getState().resolveConsent({ decision: 'cancel' });
+    expect(useStore.getState().busy).toBe(false);
+    expect(useStore.getState().activity.at(-1)?.status).toBe('cancelled');
   });
 
   it('cancel confirms nothing happened', () => {
@@ -250,14 +294,28 @@ describe('store: voice', () => {
 });
 
 describe('phase gating', () => {
-  it('shipped phase matches the AI core phase', () => {
-    expect(CURRENT_PHASE).toBe(PHASE.aiCore);
+  beforeEach(reset);
+
+  it('shipped phase matches the filesystem-tools phase', () => {
+    expect(CURRENT_PHASE).toBe(PHASE.fileTools);
   });
 
-  it('every quick action is still gated beyond the current phase', () => {
+  // An action that claims to be available must have something behind it.
+  it('available quick actions carry a template; gated ones do not', () => {
     for (const a of QUICK_ACTIONS) {
-      expect(a.availableIn).toBeGreaterThan(CURRENT_PHASE);
+      if (a.availableIn <= CURRENT_PHASE) {
+        expect(a.template, `${a.label} is available but has no template`).toBeTruthy();
+      } else {
+        expect(a.template, `${a.label} is gated but carries a template`).toBeUndefined();
+      }
     }
+  });
+
+  it('an available quick action fills the composer instead of firing blind', () => {
+    const { setDraft } = useStore.getState();
+    setDraft('find duplicate files in downloads');
+    expect(useStore.getState().draft).toBe('find duplicate files in downloads');
+    expect(useStore.getState().messages).toHaveLength(0);
   });
 });
 
@@ -362,5 +420,78 @@ describe('store: streamed agent events', () => {
     handle({ type: 'delta', text: 'second' });
     const assistant = useStore.getState().messages.filter((m) => m.role === 'assistant');
     expect(assistant.map((m) => m.content)).toEqual(['first', 'second']);
+  });
+});
+
+describe('store: tool events', () => {
+  beforeEach(() => {
+    reset();
+    connect();
+    useStore.setState({ busy: true });
+  });
+
+  const handle = (e: Parameters<ReturnType<typeof useStore.getState>['handleEvent']>[0]) =>
+    useStore.getState().handleEvent(e);
+
+  it('a tool result becomes a tool message, not an assistant reply', () => {
+    handle({
+      type: 'tool.result',
+      tool: 'filesystem',
+      operation: 'create_folder',
+      ok: true,
+      summary: 'Created folder University',
+      changes: ['Created C:\\Users\\you\\Desktop\\University'],
+      data: {},
+      verified: true,
+      elapsedMs: 12,
+      risk: 'low',
+    });
+    const last = useStore.getState().messages.at(-1);
+    expect(last?.role).toBe('tool');
+    expect(last?.tool?.status).toBe('succeeded');
+    expect(useStore.getState().messages.some((m) => m.role === 'assistant')).toBe(false);
+  });
+
+  // An unverified change must not be logged as a plain success.
+  it('an unverified result says so in the activity log', () => {
+    handle({
+      type: 'tool.result',
+      tool: 'filesystem',
+      operation: 'create_folder',
+      ok: false,
+      summary: 'Created folder University',
+      changes: [],
+      data: {},
+      verified: false,
+      elapsedMs: 9,
+      risk: 'low',
+    });
+    const entry = useStore.getState().activity.at(-1);
+    expect(entry?.status).toBe('failed');
+    expect(entry?.detail).toContain('NOT verified');
+  });
+
+  it('a denied tool call is logged as blocked', () => {
+    handle({
+      type: 'tool.planned',
+      tool: 'filesystem',
+      operation: 'delete',
+      summary: 'Delete 3 files',
+      affected: 3,
+      risk: 'medium',
+      verdict: 'deny',
+      reason: 'This needs permission Jarvis does not have: Delete files',
+    });
+    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+  });
+
+  it('a plan is logged but does not appear in the conversation', () => {
+    handle({
+      type: 'plan',
+      unsupported: '',
+      steps: [{ tool: 'filesystem', args: { operation: 'list' }, rationale: 'list downloads' }],
+    });
+    expect(useStore.getState().messages).toHaveLength(0);
+    expect(useStore.getState().activity.at(-1)?.summary).toContain('Planned 1 step');
   });
 });

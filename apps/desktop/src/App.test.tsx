@@ -130,12 +130,22 @@ describe('App shell', () => {
     expect(useStore.getState().stopped).toBe(true);
   });
 
-  it('quick actions name the phase they need rather than acting', async () => {
+  it('a gated quick action names the phase it needs rather than acting', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /Open Apps/ }));
+    expect(screen.getByText(/needs Phase 4/i)).toBeTruthy();
+    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+  });
+
+  it('an available quick action pre-fills the composer', async () => {
     const user = userEvent.setup();
     await renderApp();
     await user.click(screen.getByRole('button', { name: /Search Files/ }));
-    expect(screen.getByText(/needs Phase 3/i)).toBeTruthy();
-    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+    const input = screen.getByLabelText('Message Jarvis') as HTMLTextAreaElement;
+    expect(input.value).toContain('find my pdf files');
+    // Nothing was sent: the user edits first.
+    expect(useStore.getState().messages.filter((m) => m.role === 'user')).toHaveLength(0);
   });
 
   it('exposes the consent dialog from Settings for review', async () => {

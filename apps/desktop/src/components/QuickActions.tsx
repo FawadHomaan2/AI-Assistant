@@ -8,13 +8,14 @@ const ICONS: Record<string, IconName> = {
   screenshot: 'camera',
   'security-scan': 'shield',
   'system-check': 'cpu',
-  'clean-downloads': 'broom',
+  'find-duplicates': 'broom',
   voice: 'mic',
 };
 
 export function QuickActions() {
   const pushMessage = useStore((s) => s.pushMessage);
   const logActivity = useStore((s) => s.logActivity);
+  const setDraft = useStore((s) => s.setDraft);
 
   return (
     <section className="quick" aria-label="Quick actions">
@@ -31,11 +32,18 @@ export function QuickActions() {
               className={`quick__btn${ready ? '' : ' is-pending'}`}
               title={ready ? a.hint : `${a.hint} — needs Phase ${a.availableIn}`}
               onClick={() => {
-                // Every action is gated on its phase; none of them pretend to work.
+                // An available action pre-fills the composer so the user can
+                // adjust it before anything runs. An unavailable one says which
+                // phase delivers it rather than pretending to work.
+                if (ready && a.template) {
+                  setDraft(a.template);
+                  logActivity({ summary: `Quick action: ${a.label}`, status: 'succeeded', detail: a.template });
+                  return;
+                }
                 pushMessage({
                   role: 'system',
                   notice: true,
-                  content: `"${a.label}" needs Phase ${a.availableIn}. ${a.hint}. This build is Phase ${CURRENT_PHASE} (interface only), so the button is wired but has no tool behind it.`,
+                  content: `"${a.label}" needs Phase ${a.availableIn}. ${a.hint}. This build is Phase ${CURRENT_PHASE}, so the button is wired but has no tool behind it yet.`,
                 });
                 logActivity({ summary: `Quick action: ${a.label}`, status: 'blocked', detail: `Requires Phase ${a.availableIn}` });
               }}

@@ -8,12 +8,20 @@ from dataclasses import dataclass
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from jarvis.agents.executor import Executor
 from jarvis.agents.orchestrator import Orchestrator
 from jarvis.ai.gateway import Gateway
 from jarvis.config.settings import Settings
 from jarvis.db.engine import Database
 from jarvis.db.repositories import AuditRepository, SessionRepository, TurnRepository
+from jarvis.governance.consent import ConsentBroker
 from jarvis.governance.estop import EmergencyStop
+from jarvis.governance.pathjail import PathJail
+from jarvis.governance.policy import Policy
+from jarvis.governance.scopes import ScopeGrants
+from jarvis.tools.documents import DocumentTool
+from jarvis.tools.filesystem import FileSystemTool
+from jarvis.tools.registry import ToolRegistry
 from jarvis.transport import routes
 from jarvis.transport.auth import AuthMiddleware
 from jarvis.util.errors import JarvisError
@@ -37,6 +45,11 @@ class Context:
     orchestrator: Orchestrator
     estop: EmergencyStop
     token: str
+    jail: PathJail
+    policy: Policy
+    consent: ConsentBroker
+    registry: ToolRegistry
+    executor: Executor
     version: str = VERSION
 
 
@@ -47,7 +60,20 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     audit = AuditRepository(db)
     gateway = Gateway(settings)
     estop = EmergencyStop()
-    orchestrator = Orchestrator(gateway, sessions, turns, audit, estop)
+
+    # Governance plane. The jail's allowed roots default to the user's own
+    # document folders; the policy engine gates every tool call against them.
+    jail = PathJail()
+    policy = Policy(ScopeGrants(), mode=settings.mode)
+    consent = ConsentBroker()
+
+    registry = ToolRegistry()
+    registry.register(FileSystemTool(jail))
+    registry.register(DocumentTool(jail))
+
+    executor = Executor(registry, policy, consent, audit, estop)
+    orchestrator = Orchestrator(gateway, sessions, turns, audit, estop, executor)
+
     return Context(
         settings=settings,
         db=db,
@@ -58,6 +84,11 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         orchestrator=orchestrator,
         estop=estop,
         token=token,
+        jail=jail,
+        policy=policy,
+        consent=consent,
+        registry=registry,
+        executor=executor,
     )
 
 

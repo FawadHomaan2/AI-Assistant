@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from jarvis.agents.types import EventType, Intent
+from jarvis.agents.types import EventType
 
 
 async def _run(ctx, message: str):
@@ -24,21 +24,29 @@ async def test_chat_streams_and_persists(ctx) -> None:
     assert history[1].provider == "dev_echo"
 
 
-async def test_computer_task_is_intercepted_not_answered(ctx) -> None:
-    """The key honesty guarantee of this phase.
+async def test_computer_task_never_reaches_the_model(ctx) -> None:
+    """The honesty guarantee that survives every phase.
 
-    A capable model asked to open Chrome will say "Done!". Routing must stop the
-    request before it reaches any model, so Jarvis cannot claim to have acted.
+    A capable model asked to open Chrome will say "Done!". A request to act is
+    handled by the tool layer or refused — it is never answered by the model,
+    so Jarvis cannot claim to have done something it did not do.
     """
     _, events = await _run(ctx, "Open Chrome and search for React docs")
     kinds = [e.type for e in events]
-    assert EventType.NOTICE in kinds
     assert EventType.DELTA not in kinds, "a computer task must never reach the model"
+    assert EventType.NOTICE in kinds
 
     notice = next(e for e in events if e.type is EventType.NOTICE)
-    assert notice.data["intent"] == Intent.COMPUTER_TASK.value
-    assert notice.data["available_in_phase"] == 3
-    assert "can't act on your computer yet" in notice.data["message"]
+    assert "Launching and controlling applications arrives in Phase 4" in notice.data["message"]
+
+
+async def test_unmappable_file_request_says_so_rather_than_guessing(ctx) -> None:
+    """Guessing here moves or deletes the wrong files."""
+    _, events = await _run(ctx, "sort out my downloads however you think is best")
+    kinds = [e.type for e in events]
+    assert EventType.DELTA not in kinds
+    notice = next(e for e in events if e.type is EventType.NOTICE)
+    assert "can't yet work out the exact steps" in notice.data["message"]
 
 
 async def test_security_request_claims_no_status(ctx) -> None:

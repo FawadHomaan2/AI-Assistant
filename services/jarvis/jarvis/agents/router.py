@@ -144,6 +144,21 @@ _FILE_NOUNS = (
     "duplicate",
 )
 
+#: A filename with an extension is a strong signal that a request is about a
+#: file, whatever the surrounding phrasing. Without this, "read budget.csv"
+#: looks conversational and never reaches the tools.
+_FILENAME = re.compile(
+    r"\b[\w\-]{1,60}\.(?:pdf|docx?|xlsx?|pptx?|txt|csv|tsv|md|json|log)\b", re.IGNORECASE
+)
+
+#: Verbs that mean "open this document" only when a file or path is also named.
+#: On their own they are ordinary English ("read me a poem").
+_READ_VERBS = ("read ", "summarise ", "summarize ", "open ")
+
+#: An explicit path is routed to the tool layer so the path jail visibly refuses
+#: it, rather than the model merely talking about the file.
+_EXPLICIT_PATH = re.compile(r"(?:^|\s)(?:[A-Za-z]:[\\/]|/[a-z]|\.{1,2}[\\/]|~[\\/])", re.IGNORECASE)
+
 # Questions *about* a topic are chat, even when they contain an action verb:
 # "how do I open a port" is a question, "open chrome" is a command.
 _QUESTION_PREFIX = re.compile(
@@ -180,6 +195,22 @@ def route(message: str) -> Route:
         return Route(Intent.DIAGNOSTIC, 0.8, "asks about this machine's condition", signals)
 
     action_signals = _hits(text, _ACTION_VERBS)
+    if filename := _FILENAME.search(text):
+        return Route(
+            Intent.COMPUTER_TASK,
+            0.9,
+            "names a file, so this is about the user's own files",
+            [*action_signals, filename.group(0).strip()],
+        )
+
+    if (action_signals or _hits(text, _READ_VERBS)) and _EXPLICIT_PATH.search(message):
+        return Route(
+            Intent.COMPUTER_TASK,
+            0.9,
+            "names an explicit path",
+            action_signals,
+        )
+
     if action_signals:
         starts_with_verb = any(text.startswith(v.strip()) for v in _ACTION_VERBS)
         # A question only counts as a command when it is about the user's own

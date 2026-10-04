@@ -110,3 +110,39 @@ describe('ConsentDialog', () => {
     expect(useStore.getState().activity.at(-1)?.status).toBe('succeeded');
   });
 });
+
+describe('ConsentDialog severity', () => {
+  // A medium-risk file move and a disk format must not look alike.
+  it('escalates the dialog styling with the risk tier', () => {
+    useStore.getState().requestConsent({ ...base, risk: 'medium' });
+    const { unmount } = render(<ConsentDialog />);
+    expect(screen.getByRole('alertdialog').className).toContain('consent--warning');
+    unmount();
+
+    useStore.setState({ consent: null });
+    useStore.getState().requestConsent({ ...base, risk: 'critical' });
+    render(<ConsentDialog />);
+    expect(screen.getByRole('alertdialog').className).toContain('consent--danger');
+  });
+
+  it('treats low and safe tiers as non-escalated', () => {
+    useStore.getState().requestConsent({ ...base, risk: 'low' });
+    render(<ConsentDialog />);
+    const cls = screen.getByRole('alertdialog').className;
+    expect(cls).toContain('consent--accent');
+    expect(cls).not.toContain('consent--danger');
+  });
+
+  // Permanence is the single most important fact in the dialog.
+  it('marks permanent and unknown reversibility distinctly', () => {
+    useStore.getState().requestConsent({ ...base, reversible: 'permanent' });
+    const { unmount } = render(<ConsentDialog />);
+    expect(screen.getByText(/cannot be undone/).className).toBe('consent__irreversible');
+    unmount();
+
+    useStore.setState({ consent: null });
+    useStore.getState().requestConsent({ ...base, reversible: 'recycle-bin' });
+    render(<ConsentDialog />);
+    expect(screen.getByText(/Recycle Bin/).className).not.toBe('consent__irreversible');
+  });
+});

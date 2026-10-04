@@ -10,8 +10,8 @@ const time = (ms: number) =>
 
 const ROLE_LABEL: Record<ChatMessage['role'], string> = {
   user: 'You',
-  assistant: 'Juno',
-  system: 'Juno · system',
+  assistant: 'Jarvis',
+  system: 'Jarvis · system',
   tool: 'Tool',
 };
 
@@ -21,12 +21,11 @@ function Bubble({ m }: { m: ChatMessage }) {
     <li className={cls}>
       <header className="msg__head">
         <span className="msg__role">{ROLE_LABEL[m.role]}</span>
-        {m.notice && <StatusBadge label="Not implemented" kind="blocked" tone="accent" />}
+        {m.notice && <StatusBadge label="Not implemented" kind="blocked" tone="notice" />}
         {m.tool && (
           <StatusBadge
             label={`${m.tool.name} · ${m.tool.status}`}
             kind={m.tool.status === 'succeeded' ? 'ok' : m.tool.status === 'failed' ? 'failed' : 'pending'}
-            tone={m.tool.status === 'failed' ? 'accent' : 'neutral'}
           />
         )}
         <time className="msg__time" dateTime={new Date(m.createdAt).toISOString()}>
@@ -53,7 +52,7 @@ export function ChatThread() {
     return (
       <div className="thread thread--empty">
         <Icon name="chat" size={28} />
-        <p>No messages. Ask Juno something, or press Ctrl+Space from anywhere.</p>
+        <p>No messages. Ask Jarvis something, or press Ctrl+Space from anywhere.</p>
       </div>
     );
   }

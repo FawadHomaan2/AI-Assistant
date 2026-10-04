@@ -1,4 +1,4 @@
-# Juno — Personal AI Computer Assistant
+# Jarvis — Personal AI Computer Assistant
 
 **Architecture & Design Document**
 Target platform: Windows 10 21H2+ / Windows 11 (x64, ARM64 best-effort)
@@ -8,22 +8,27 @@ Status: architecture approved → Phase 1 implemented
 
 ## 0. The name
 
-**Juno.** Wake phrase: *"Juno"* (configurable).
+**Jarvis.** Wake phrase: *"Jarvis"* or *"Hey Jarvis"* (configurable).
 
-This is not an arbitrary pick — the wake word is load-bearing, and a bad one makes
-voice mode unusable:
+The wake word is load-bearing — a bad one makes voice mode unusable — and this
+one happens to be the strongest available choice on the merits, not only the
+most familiar:
 
-| Criterion | Why `Juno` works |
+| Criterion | Why `Jarvis` works |
 |---|---|
-| Acoustically distinct | `/ˈdʒuː.noʊ/` — affricate onset (`dʒ`) + long back vowel + nasal + diphthong. Almost no phonetic neighbours in English. |
-| Rare in conversation | Unlike *Iris*, *Atlas*, *Nova*, *Alex* it practically never occurs in normal speech → very low false-accept rate. |
-| Two syllables | Long enough for a reliable keyword-spotting window (~1s), short enough to say constantly. |
-| Easy to train | Clean phoneme set for a custom `openWakeWord` / `Porcupine` model. |
+| **Pretrained models already exist** | `openWakeWord` ships `hey_jarvis` as one of its official pretrained ONNX models, and Picovoice Porcupine has `jarvis` as a built-in keyword. No training data to collect, no custom model to build, and detection accuracy comes from a model trained on far more speakers than we could gather. This is the decisive advantage. |
+| Acoustically distinct | `/ˈdʒɑːr.vɪs/` — affricate onset (`dʒ`), open back vowel, rhotic centre, fricative coda (`s`). The onset/coda contrast is easy for a keyword spotter to lock onto. |
+| Rare in conversation | Practically never occurs in ordinary English speech, so the false-accept rate stays low. |
+| Two syllables | Long enough for a reliable spotting window (~1s), short enough to say all day. |
 
-Rejected: *Iris* / *Atlas* / *Nova* (common words or heavily branded → false triggers),
-*Vera* / *Kai* (too close to common names and single-syllable confusables).
+Rejected: *Iris* / *Atlas* / *Nova* (common words or heavily branded → false
+triggers), *Vera* / *Kai* (too close to common names, and single-syllable
+confusables). Any name without a pretrained model would mean recording wake-word
+samples before voice mode worked at all.
 
-The wake word lives in config (`voice.wake_word`), so it can be changed without a rebuild.
+The wake word lives in config (`voice.wake_word`), so it can be changed without a
+rebuild — at the cost of needing a custom model for anything outside each
+engine's built-in keyword list.
 
 ---
 
@@ -96,7 +101,7 @@ closes the local-attacker gap.
 
 ## 2. Complete system architecture
 
-Juno is a **four-plane** system. The planes are separated so that the plane which
+Jarvis is a **four-plane** system. The planes are separated so that the plane which
 can *do damage* (Execution) is the smallest, most audited, and most constrained.
 
 1. **Presentation plane** — Tauri shell + React UI. Holds no secrets, has no
@@ -140,7 +145,7 @@ hits the same gate a user request would.
                                 │  HTTP + WebSocket, 127.0.0.1:<ephemeral>
                                 │  Bearer <per-launch token>, Origin-checked
 ┌───────────────────────────────┴──────────────────────────────────────────────┐
-│                     JUNO CORE  —  Python sidecar (FastAPI)                    │
+│                     JARVIS CORE  —  Python sidecar (FastAPI)                    │
 │                                                                              │
 │  ┌────────────────────────── COGNITION PLANE ──────────────────────────────┐ │
 │  │                                                                          │ │
@@ -188,7 +193,7 @@ hits the same gate a user request would.
 │             │                     │                 │               │        │
 │  ┌──────────┴─────────────────────┴─────────────────┴───────────────┴──────┐ │
 │  │  PERSISTENCE   SQLite (WAL) + sqlite-vec  │  Windows Credential Manager  │ │
-│  │  %LOCALAPPDATA%\Juno\juno.db · logs\ · models\ · config.toml             │ │
+│  │  %LOCALAPPDATA%\Jarvis\jarvis.db · logs\ · models\ · config.toml             │ │
 │  └──────────────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────┘
                                   │
@@ -276,8 +281,8 @@ AI-Assistant/
 │       └── vite.config.ts
 │
 ├── services/
-│   └── juno/                         # Python core (the sidecar)
-│       ├── juno/
+│   └── jarvis/                         # Python core (the sidecar)
+│       ├── jarvis/
 │       │   ├── __main__.py           # entrypoint: bind loopback, emit port+token
 │       │   ├── app.py                # FastAPI app factory
 │       │   ├── config/               # settings model, TOML load/merge, paths
@@ -343,13 +348,13 @@ vitest  @testing-library/react  jsdom         # test
 tauri 2                      serde / serde_json
 tauri-plugin-shell           # sidecar spawn
 tauri-plugin-global-shortcut # Ctrl+Space
-tauri-plugin-single-instance # one Juno only
+tauri-plugin-single-instance # one Jarvis only
 tauri-plugin-autostart       # optional launch at login
 tauri-plugin-notification
 sysinfo                      # REAL cpu/ram/disk — no mocks
 ```
 
-### Python core (`services/juno/pyproject.toml`)
+### Python core (`services/jarvis/pyproject.toml`)
 
 Split into extras so a minimal install stays small and offline-capable:
 
@@ -434,7 +439,7 @@ not merely disabled:
 4. Consent broker for anything above low risk.
 5. Path jail: every filesystem path canonicalised (`realpath`, symlink/junction
    resolved, 8.3-name expanded) and tested against an allowlist. `%WINDIR%`,
-   `%PROGRAMFILES%`, `System32`, boot files, and the Juno install dir are on a
+   `%PROGRAMFILES%`, `System32`, boot files, and the Jarvis install dir are on a
    deny-list that no grant can override.
 6. Constrained subprocess execution: argument **lists** only — never a shell
    string, never `shell=True`. PowerShell runs `-NoProfile -NonInteractive` with
@@ -442,7 +447,7 @@ not merely disabled:
    and AV/firewall-disabling cmdlets are rejected before spawn.
 7. Append-only, hash-chained audit log — tamper-evident.
 8. Emergency stop: a process-wide cancellation token every tool must poll, plus
-   termination of child processes Juno spawned.
+   termination of child processes Jarvis spawned.
 
 ---
 
@@ -602,7 +607,7 @@ attempts) so a confused loop terminates instead of grinding.
  ┌─────────────────┐            ┌──────────────────┐
  │  WAKE WORD      │            │  PUSH-TO-TALK    │
  │  openWakeWord   │            │  Ctrl+Space hold │
- │  "Juno" (ONNX)  │            │  (always avail.) │
+ │ hey_jarvis ONNX │            │  (always avail.) │
  │  ~15 MB, local  │            └────────┬─────────┘
  └────────┬────────┘                     │
           └──────────────┬───────────────┘
@@ -618,7 +623,7 @@ attempts) so a confused loop terminates instead of grinding.
                └────────┬─────────┘   Cloud STT = opt-in only.
                         ▼
                ┌──────────────────┐
-               │   JUNO CORE      │  (router → planner → … )
+               │   JARVIS CORE      │  (router → planner → … )
                └────────┬─────────┘
                         ▼
                ┌──────────────────┐   Piper ONNX, streamed by sentence so
@@ -637,7 +642,8 @@ attempts) so a confused loop terminates instead of grinding.
 ### Design commitments
 - **Local by default, end to end.** No audio leaves the machine unless the user
   explicitly enables a cloud STT provider. The mic is never "always streaming to
-  a server" — wake-word detection is a local 15 MB ONNX model on a ring buffer.
+  a server" — wake-word detection is openWakeWord's pretrained `hey_jarvis`
+  model, a local ~15 MB ONNX graph running on a ring buffer.
 - **Barge-in is mandatory, not a nice-to-have.** An assistant you can't interrupt
   mid-sentence is unusable. Implemented by keeping capture live during playback
   with AEC-lite (ignore input correlated with current output) to avoid self-trigger.
@@ -769,7 +775,7 @@ per-job-class overrides, context size, temperature, token/£ budget caps, and a
 connectivity test button. API keys are entered in a masked field, written straight
 to **Windows Credential Manager**, and never read back into the UI — the field
 shows "configured", not the value. `config.toml` contains no secrets, only a
-reference like `credential = "juno/openai"`. Nothing is hard-coded.
+reference like `credential = "jarvis/openai"`. Nothing is hard-coded.
 
 ### Offline guarantee
 With no network: UI, all computer control, filesystem/process/window/system tools,
@@ -781,7 +787,7 @@ degrade — and they report *why*, rather than hanging.
 
 ## 12. Database design
 
-SQLite, WAL mode, `%LOCALAPPDATA%\Juno\juno.db`. Versioned, forward-only
+SQLite, WAL mode, `%LOCALAPPDATA%\Jarvis\jarvis.db`. Versioned, forward-only
 migrations. No ORM.
 
 ```text
@@ -836,7 +842,7 @@ Design notes worth stating:
   becoming a secondary copy of your file contents.
 - **`security_findings.classification`** is a constrained column, so the "don't
   call it a virus because it's unfamiliar" rule is enforced by the schema, not by
-  prompt wording. `security_baseline` is what lets Juno say "this is new" instead
+  prompt wording. `security_baseline` is what lets Jarvis say "this is new" instead
   of "this is malicious".
 - **`steps.control_layer`** records which rung of the §10 ladder was used, making
   automation flakiness measurable rather than anecdotal.
@@ -916,9 +922,9 @@ Stated plainly, because the honest version of this project has limits:
 2. **UIA coverage is uneven.** Electron apps, some games, custom-rendered UIs
    (Flutter, Qt without the bridge), and canvas apps expose little or nothing.
    Those fall to L3/L4 and will be less reliable; the layer is labelled so you know.
-3. **Elevation can't be inherited.** A non-elevated Juno cannot drive an elevated
+3. **Elevation can't be inherited.** A non-elevated Jarvis cannot drive an elevated
    window (UIPI). Admin actions need a per-action elevated helper + UAC prompt.
-   Running Juno elevated permanently would be worse, so we don't.
+   Running Jarvis elevated permanently would be worse, so we don't.
 4. **Local LLM quality/latency tradeoff is real.** Reliable tool-calling from a
    7–8B model is achievable but noticeably worse at multi-step planning than a
    frontier model. 14B+ with ≥8 GB VRAM is where local planning gets good. The
@@ -933,7 +939,7 @@ Stated plainly, because the honest version of this project has limits:
    code signing plus, realistically, user-added exclusions. Without a signing cert,
    SmartScreen will warn on install.
 8. **Defender/firewall *changes* need admin**, and some enterprise/Intune-managed
-   machines block them entirely via policy. Juno reports the policy block rather
+   machines block them entirely via policy. Jarvis reports the policy block rather
    than failing opaquely.
 9. **Disk health (SMART) access is inconsistent** across controllers, especially
    NVMe behind RAID/VMD. Reported as unavailable when it is, not guessed.
@@ -942,7 +948,14 @@ Stated plainly, because the honest version of this project has limits:
     you in your real accounts without an explicit, separate decision.
 11. **Event Log reads** for security events (e.g. failed logons, 4625) need admin
     and the relevant audit policy enabled; often unavailable on Home editions.
-12. **Cross-platform build caveat:** this repository is authored in a Linux
+12. **Web browsing is allowlisted by host, and the list starts almost empty.**
+    Only the default search engine is permitted on a fresh install, so "go to
+    example.com" is refused until you add the host. That is the intended
+    trade-off: the allowlist is what makes a prompt-injected page unable to
+    redirect Jarvis, and an assistant that browses anywhere by default has no
+    defence against it beyond the model's own judgement. Loopback is a separate
+    switch, off by default; the private LAN ranges are never navigable.
+13. **Cross-platform build caveat:** this repository is authored in a Linux
     container. Platform-neutral code is fully tested here; Win32/UIA/WMI paths,
     the Rust/WebView2 shell build, and the NSIS installer **can only be compiled
     and verified on Windows**. Phase gates for those parts are explicitly
@@ -963,14 +976,14 @@ Stated plainly, because the honest version of this project has limits:
 | DPI | Per-monitor-v2 DPI awareness declared in the manifest (UIA is DPI-safe; L4 coordinate work is scaled explicitly). |
 | Defender | Likely needs an exclusion for the install dir, and the installer should say so rather than hiding it. |
 | Store/MSIX | Not targeted for v1 — MSIX's container restrictions conflict with system-wide automation. NSIS per-user install instead. |
-| Data locations | `%LOCALAPPDATA%\Juno\` (db, logs, models, cache); `%APPDATA%\Juno\config.toml`; Credential Manager for secrets; `%LOCALAPPDATA%\Programs\Juno\` for the program. |
+| Data locations | `%LOCALAPPDATA%\Jarvis\` (db, logs, models, cache); `%APPDATA%\Jarvis\config.toml`; Credential Manager for secrets; `%LOCALAPPDATA%\Programs\Jarvis\` for the program. |
 
 ---
 
 ## 18. Installation & packaging strategy
 
 ```text
- services/juno  ──PyInstaller(onedir)──▶  juno-core.exe + _internal/
+ services/jarvis  ──PyInstaller(onedir)──▶  jarvis-core.exe + _internal/
                                                    │
  apps/desktop   ──vite build──▶ dist/              │ bundled as Tauri externalBin
                                    └──tauri build──┤
@@ -984,15 +997,15 @@ sidecar is a normal child process, supervised by Rust, with health checks and
 auto-restart.
 
 **Installer does:**
-per-user install to `%LOCALAPPDATA%\Programs\Juno`; Desktop + Start Menu
-shortcuts; optional "Start with Windows"; creates `%LOCALAPPDATA%\Juno\`;
+per-user install to `%LOCALAPPDATA%\Programs\Jarvis`; Desktop + Start Menu
+shortcuts; optional "Start with Windows"; creates `%LOCALAPPDATA%\Jarvis\`;
 writes a default `config.toml` with **no secrets**; bootstraps WebView2 + VC++ if
 missing; registers a clean uninstaller (with a "keep or delete my data" choice);
 and does **not** bundle AI models.
 
 **Models on first run, with consent:** a setup wizard shows each download, its
 size, and its purpose, then fetches whisper/piper/wake-word/GGUF to
-`%LOCALAPPDATA%\Juno\models\`. This keeps the installer ~60–80 MB instead of
+`%LOCALAPPDATA%\Jarvis\models\`. This keeps the installer ~60–80 MB instead of
 multi-gigabyte, and keeps the choice to download anything in the user's hands.
 
 **Signing & updates:** code-sign the sidecar, the app, and the installer (needed
@@ -1001,5 +1014,5 @@ updater against a signed manifest, user-approved, with the option to disable upd
 checks entirely for a fully offline install.
 
 **Uninstall** removes the program, shortcuts, autostart entry, and Credential
-Manager entries, and asks before deleting `%LOCALAPPDATA%\Juno\` (your data,
+Manager entries, and asks before deleting `%LOCALAPPDATA%\Jarvis\` (your data,
 your call).

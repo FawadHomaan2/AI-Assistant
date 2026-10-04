@@ -28,6 +28,63 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  palette:
+    name: Palette contrast (WCAG AA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # Fails if any foreground/background pair in the design tokens drops
+      # below its WCAG AA threshold in either theme.
+      - run: python3 scripts/check_contrast.py
+
+  core:
+    name: Python core (ruff · mypy · pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/jarvis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # No `secrets` extra: the core must import and pass its tests without a
+      # desktop credential backend, which is exactly the headless CI case.
+      # The documents extra is included so the PDF/Word/Excel readers are
+      # exercised; the secrets extra is not, because headless CI has no
+      # credential backend and the core must pass without one.
+      - run: pip install -e ".[dev,documents]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy jarvis
+      - run: pytest -q
+
+  browser:
+    name: Browser gate (real Chromium)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/jarvis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -e ".[dev,browser]"
+      # Its own job because it downloads a browser. The Phase 7 gate is
+      # "navigate, extract, and submit a form behind a confirmation", and a
+      # stubbed browser cannot demonstrate any of it — these tests drive a real
+      # Chromium against a real HTTP server, so they catch the things that only
+      # break for real: selector behaviour, what innerText returns, and whether
+      # a submit actually reaches the server.
+      - run: playwright install --with-deps chromium
+      - run: pytest tests/test_phase7_e2e.py tests/test_phase7_browser.py tests/test_phase7_urls.py -q
+
   shell:
     name: Rust shell (clippy · test)
     runs-on: ubuntu-latest
@@ -45,6 +102,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      # Since Phase 12 the bundle declares the Python core as an `externalBin`,
+      # and Tauri's build script refuses to compile without the file present.
+      # This job compiles; it does not bundle, and building the real 40 MB
+      # sidecar here would add minutes to every push for a binary nothing runs.
+      # A placeholder satisfies the existence check. Nothing executes it: if it
+      # ever did, the empty file would fail loudly rather than silently pass.
+      - name: Place a stand-in for the core sidecar
+        run: |
+          mkdir -p binaries
+          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          printf '#!/bin/sh\necho "placeholder; the real core comes from scripts/build_core.py" >&2\nexit 1\n' \
+            > "binaries/jarvis-core-$triple"
+          chmod +x "binaries/jarvis-core-$triple"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
@@ -71,10 +141,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # The core must exist before Tauri bundles it. Until Phase 12 this job
+      # produced an installer with no core inside it at all, which would have
+      # installed cleanly and then failed on first launch.
+      - name: Build the core sidecar
+        working-directory: services/jarvis
+        run: |
+          pip install -e ".[documents]"
+          pip install pyinstaller
+      - name: Freeze and smoke-test the core
+        working-directory: .
+        run: python scripts/build_core.py
       - run: npm ci
       - run: npm run tauri build
       - uses: actions/upload-artifact@v4
         with:
-          name: juno-installer
+          name: jarvis-installer
           path: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error

@@ -2,7 +2,7 @@
 //!
 //! The shell holds the authoritative latch. Phase 1 has no automation to abort,
 //! so engaging it sets the flag, notifies the UI, and terminates any child
-//! process Juno itself spawned. From Phase 2 the Python core polls this through
+//! process Jarvis itself spawned. From Phase 2 the Python core polls this through
 //! its own cancellation token, and from Phase 10 every tool checks it between
 //! steps.
 
@@ -15,7 +15,7 @@ static ENGAGED: AtomicBool = AtomicBool::new(false);
 pub fn engage<R: Runtime>(app: &AppHandle<R>) {
     ENGAGED.store(true, Ordering::SeqCst);
     log::warn!("EMERGENCY STOP engaged");
-    let _ = app.emit("juno://emergency-stop", ());
+    let _ = app.emit("jarvis://emergency-stop", ());
 }
 
 pub fn clear() {

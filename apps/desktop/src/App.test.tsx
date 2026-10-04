@@ -31,6 +31,18 @@ vi.mock('@/lib/bridge', () => ({
     reason: { kind: 'no-bridge', what: 'hide_to_tray' },
   }),
   listen: vi.fn().mockResolvedValue(() => {}),
+  getCoreEndpoint: vi.fn().mockResolvedValue({
+    ok: false,
+    reason: { kind: 'no-bridge', what: 'core_endpoint' },
+  }),
+  getCoreStatus: vi.fn().mockResolvedValue({
+    ok: false,
+    reason: { kind: 'no-bridge', what: 'core_status' },
+  }),
+  restartCore: vi.fn().mockResolvedValue({
+    ok: false,
+    reason: { kind: 'no-bridge', what: 'restart_core' },
+  }),
 }));
 
 beforeEach(() => {
@@ -61,7 +73,7 @@ describe('App shell', () => {
   it('renders navigation and the chat view by default', async () => {
     await renderApp();
     expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeTruthy();
-    expect(screen.getByLabelText('Message Juno')).toBeTruthy();
+    expect(screen.getByLabelText('Message Jarvis')).toBeTruthy();
   });
 
   it('navigates between all five views', async () => {
@@ -77,23 +89,25 @@ describe('App shell', () => {
       expect(screen.getByRole('heading', { level: 1, name: heading })).toBeTruthy();
     }
     await user.click(screen.getByRole('button', { name: 'Assistant' }));
-    expect(screen.getByLabelText('Message Juno')).toBeTruthy();
+    expect(screen.getByLabelText('Message Jarvis')).toBeTruthy();
   });
 
-  it('sends on Enter and shows the not-implemented notice', async () => {
+  it('sends on Enter and explains that no core is reachable', async () => {
     const user = userEvent.setup();
     await renderApp();
-    await user.type(screen.getByLabelText('Message Juno'), 'Open Chrome{Enter}');
+    await user.type(screen.getByLabelText('Message Jarvis'), 'Open Chrome{Enter}');
     // Scope to the conversation: the activity log echoes the same text.
     const log = within(screen.getByRole('log', { name: /conversation/i }));
     expect(log.getByText('Open Chrome')).toBeTruthy();
-    expect(log.getByText(/needs the AI core/i)).toBeTruthy();
+    // No shell under test means no core, so the UI must say so rather than
+    // invent a reply.
+    expect(log.getByText(/core isn't available|Still connecting/i)).toBeTruthy();
   });
 
   it('Shift+Enter inserts a newline instead of sending', async () => {
     const user = userEvent.setup();
     await renderApp();
-    const input = screen.getByLabelText('Message Juno') as HTMLTextAreaElement;
+    const input = screen.getByLabelText('Message Jarvis') as HTMLTextAreaElement;
     await user.type(input, 'line one{Shift>}{Enter}{/Shift}line two');
     expect(input.value).toContain('\n');
     expect(useStore.getState().messages).toHaveLength(0);
@@ -116,12 +130,46 @@ describe('App shell', () => {
     expect(useStore.getState().stopped).toBe(true);
   });
 
-  it('quick actions name the phase they need rather than acting', async () => {
+  it('a gated quick action names the phase it needs rather than acting', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /Set a Reminder/ }));
+    expect(screen.getByText(/needs Phase 13/i)).toBeTruthy();
+    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+  });
+
+  it('managing permissions opens the Privacy view rather than typing a request', async () => {
+    // An assistant should not be the one granting itself capabilities, so this
+    // action navigates instead of pre-filling the composer.
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /Manage Permissions/ }));
+    expect(screen.getByRole('heading', { name: 'Privacy' })).toBeTruthy();
+  });
+
+  it('the plugins action opens Settings now that Phase 11 has shipped', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /^Plugins$/ }));
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+  });
+
+  it('the security scan action acts now that Phase 9 has shipped', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: /Security Scan/ }));
+    const input = screen.getByLabelText('Message Jarvis') as HTMLTextAreaElement;
+    expect(input.value).toBe('check my security');
+  });
+
+  it('an available quick action pre-fills the composer', async () => {
     const user = userEvent.setup();
     await renderApp();
     await user.click(screen.getByRole('button', { name: /Search Files/ }));
-    expect(screen.getByText(/needs Phase 3/i)).toBeTruthy();
-    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
+    const input = screen.getByLabelText('Message Jarvis') as HTMLTextAreaElement;
+    expect(input.value).toContain('find my pdf files');
+    // Nothing was sent: the user edits first.
+    expect(useStore.getState().messages.filter((m) => m.role === 'user')).toHaveLength(0);
   });
 
   it('exposes the consent dialog from Settings for review', async () => {
@@ -137,7 +185,20 @@ describe('App shell', () => {
     const user = userEvent.setup();
     await renderApp();
     await user.click(screen.getByRole('button', { name: 'Security' }));
-    expect(screen.getByText(/Not implemented — Phase 9/)).toBeTruthy();
+    // Before a scan there is no status at all — not a reassuring green tick.
+    expect(screen.getByText(/Nothing has been checked yet/)).toBeTruthy();
     expect(screen.queryByText(/you are protected|no threats found/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /run a security check/i })).toBeTruthy();
+  });
+
+  it('the security view explains the four levels before showing any', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole('button', { name: 'Security' }));
+    for (const level of [/confirmed event/i, /suspicious behaviour/i, /potential risk/i, /normal activity/i]) {
+      expect(screen.getByText(level)).toBeTruthy();
+    }
+    // The sentence that keeps "unfamiliar" from being heard as "virus".
+    expect(screen.getByText(/not as a virus/i)).toBeTruthy();
   });
 });

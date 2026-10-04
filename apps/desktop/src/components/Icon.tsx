@@ -1,6 +1,7 @@
 /**
  * Inline SVG icon set. Inline rather than an icon package: ~20 icons, zero
- * dependency, and `currentColor` keeps them inside the two-colour palette.
+ * dependency, and `currentColor` means each icon inherits its container's
+ * semantic colour automatically.
  */
 export type IconName =
   | 'chat' | 'shield' | 'list' | 'lock' | 'settings' | 'mic' | 'mic-off' | 'send'

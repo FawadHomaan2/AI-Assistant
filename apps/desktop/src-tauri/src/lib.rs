@@ -1,4 +1,4 @@
-//! Juno desktop shell.
+//! Jarvis desktop shell.
 //!
 //! Responsibilities kept in Rust rather than the webview:
 //!   * the window, the system tray and the single global shortcut
@@ -12,12 +12,13 @@
 
 mod estop;
 mod hotkey;
+mod sidecar;
 mod system;
 mod tray;
 mod window;
 
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[derive(Serialize)]
 struct ShellInfo {
@@ -38,13 +39,13 @@ fn shell_info() -> ShellInfo {
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
-    // One Juno at a time: a second launch focuses the running instance instead
+    // One Jarvis at a time: a second launch focuses the running instance instead
     // of starting a rival tray icon and fighting over the global shortcut.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             window::show_and_focus(app);
-            let _ = app.emit("juno://activated", ());
+            let _ = app.emit("jarvis://activated", ());
         }));
         builder = builder.plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -58,6 +59,7 @@ pub fn run() {
         .plugin(hotkey::plugin())
         .manage(system::Sampler::new())
         .manage(hotkey::ActiveShortcut::default())
+        .manage(sidecar::Sidecar::default())
         .invoke_handler(tauri::generate_handler![
             shell_info,
             system::system_snapshot,
@@ -66,6 +68,9 @@ pub fn run() {
             estop::emergency_stop,
             estop::clear_emergency_stop,
             estop::emergency_stop_state,
+            sidecar::core_endpoint,
+            sidecar::core_status,
+            sidecar::restart_core,
         ])
         .setup(|app| {
             let handle = app.handle();
@@ -78,10 +83,21 @@ pub fn run() {
                 log::warn!("could not register default global shortcut: {e}");
             }
 
+            // Start the Python core in the background. A failure here is
+            // reported in the UI rather than preventing the app from opening,
+            // so the user can still read the error and reach Settings.
+            let core_handle = handle.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = sidecar::start(&core_handle) {
+                    log::error!("core failed to start: {e}");
+                    let _ = core_handle.emit("jarvis://core-error", e);
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|win, event| {
-            // Closing the window hides Juno to the tray. Exit is deliberate,
+            // Closing the window hides Jarvis to the tray. Exit is deliberate,
             // via the tray menu, so the assistant is not killed by a stray
             // click on the title bar.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -89,6 +105,11 @@ pub fn run() {
                 let _ = win.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Juno");
+        .build(tauri::generate_context!())
+        .expect("error while building Jarvis")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+                app.state::<sidecar::Sidecar>().shutdown();
+            }
+        });
 }

@@ -2,7 +2,7 @@
 //!
 //! This registers exactly one OS-level hotkey. It is not a keyboard hook and it
 //! cannot observe any other keystroke — the distinction matters, because a
-//! global input hook is what a keylogger uses, and Juno does not install one.
+//! global input hook is what a keylogger uses, and Jarvis does not install one.
 
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -65,7 +65,7 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .with_handler(|app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
                 crate::window::toggle(app);
-                let _ = app.emit("juno://activated", ());
+                let _ = app.emit("jarvis://activated", ());
             }
         })
         .build()

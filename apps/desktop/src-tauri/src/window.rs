@@ -1,4 +1,4 @@
-//! Window visibility. Closing the window hides Juno to the tray; it does not
+//! Window visibility. Closing the window hides Jarvis to the tray; it does not
 //! quit, so the global shortcut keeps working.
 
 use tauri::{AppHandle, Manager, WebviewWindow};

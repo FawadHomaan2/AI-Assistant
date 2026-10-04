@@ -1,8 +1,8 @@
 {
-  "name": "juno-desktop",
+  "name": "jarvis-desktop",
   "private": true,
   "version": "0.1.0",
-  "description": "Juno — personal AI computer assistant (desktop frontend)",
+  "description": "Jarvis — personal AI computer assistant (desktop frontend)",
   "type": "module",
   "scripts": {
     "dev": "vite",

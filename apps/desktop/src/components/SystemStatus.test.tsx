@@ -110,10 +110,53 @@ describe('SystemStatus', () => {
   });
 
   // A security panel must not imply a clean bill of health it never checked.
-  it('declares security monitoring unimplemented and claims no status', async () => {
+  it('claims no security status until something has actually been checked', async () => {
     getSystemSnapshot.mockResolvedValue(ok(snapshot()));
     render(<SystemStatus />);
-    expect(await screen.findByText(/Security monitoring is not implemented yet/i)).toBeTruthy();
+    expect(await screen.findByText(/nothing has been checked in this/i)).toBeTruthy();
+    // The panel must never reassure. "Not checked" is the only honest state
+    // before a scan, and a green tick here would be read as a verdict.
+    expect(screen.getByText('Not checked')).toBeTruthy();
     expect(screen.queryByText(/protected|secure|all clear/i)).toBeNull();
+  });
+});
+
+describe('SystemStatus load bands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useStore.setState({ system: { state: 'loading' } });
+  });
+
+  const memAt = (pct: number) =>
+    snapshot({ memTotalBytes: 100, memUsedBytes: pct, cpuPercent: 1, diskUsedBytes: 1, diskTotalBytes: 100 });
+
+  it('marks normal load as ok', async () => {
+    getSystemSnapshot.mockResolvedValue(ok(memAt(50)));
+    const { container } = render(<SystemStatus />);
+    expect(await screen.findByText('50%')).toBeTruthy();
+    expect(container.querySelectorAll('.meter--saturated')).toHaveLength(0);
+    expect(container.querySelectorAll('.meter--busy')).toHaveLength(0);
+  });
+
+  it('flags busy and saturated separately', async () => {
+    getSystemSnapshot.mockResolvedValue(ok(memAt(80)));
+    const { container, unmount } = render(<SystemStatus />);
+    expect(await screen.findByText('80%')).toBeTruthy();
+    expect(container.querySelectorAll('.meter--busy')).toHaveLength(1);
+    unmount();
+
+    getSystemSnapshot.mockResolvedValue(ok(memAt(95)));
+    const second = render(<SystemStatus />);
+    expect(await screen.findByText('95%')).toBeTruthy();
+    expect(second.container.querySelectorAll('.meter--saturated')).toHaveLength(1);
+  });
+
+  // An unknown value must not be styled as though it were healthy *or* alarming.
+  it('does not band an unknown value', async () => {
+    getSystemSnapshot.mockResolvedValue(ok(snapshot({ cpuPercent: null })));
+    const { container } = render(<SystemStatus />);
+    await screen.findByText('231 processes');
+    const cpuMeter = container.querySelector('.meter');
+    expect(cpuMeter?.className).toContain('meter--ok');
   });
 });

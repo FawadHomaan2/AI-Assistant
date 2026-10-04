@@ -25,10 +25,16 @@ export function App() {
   const setView = useStore((s) => s.setView);
   const triggerEmergencyStop = useStore((s) => s.triggerEmergencyStop);
   const logActivity = useStore((s) => s.logActivity);
+  const connectCore = useStore((s) => s.connectCore);
   const Current = VIEWS[view];
 
+  // Start (or attach to) the Jarvis core once, on mount.
+  useEffect(() => {
+    void connectCore();
+  }, [connectCore]);
+
   // In-app emergency stop. Ctrl+Shift+Esc is also Windows' Task Manager
-  // shortcut, which the OS claims first — so this works while Juno has focus,
+  // shortcut, which the OS claims first — so this works while Jarvis has focus,
   // and the always-visible STOP button covers every other case.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -44,11 +50,11 @@ export function App() {
   // Tray menu items are handled in Rust and arrive here as events.
   useEffect(() => {
     const offs: Array<() => void> = [];
-    void listen<string>('juno://navigate', (target) => {
+    void listen<string>('jarvis://navigate', (target) => {
       if (target in VIEWS) setView(target as ViewId);
     }).then((off) => offs.push(off));
-    void listen<null>('juno://emergency-stop', () => void triggerEmergencyStop()).then((off) => offs.push(off));
-    void listen<null>('juno://activated', () =>
+    void listen<null>('jarvis://emergency-stop', () => void triggerEmergencyStop()).then((off) => offs.push(off));
+    void listen<null>('jarvis://activated', () =>
       logActivity({ summary: 'Activated via global shortcut', status: 'succeeded' }),
     ).then((off) => offs.push(off));
     return () => offs.forEach((off) => off());

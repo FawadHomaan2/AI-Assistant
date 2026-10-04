@@ -1,5 +1,5 @@
 import { Icon, type IconName } from './Icon';
-import { useStore } from '@/state/store';
+import { useStore, CURRENT_PHASE } from '@/state/store';
 import type { AssistantMode, ViewId } from '@/types';
 import './Sidebar.css';
 
@@ -30,8 +30,8 @@ export function Sidebar() {
       <div className="sidebar__brand">
         <span className="sidebar__mark" aria-hidden="true">J</span>
         <span className="sidebar__name">
-          Juno
-          <small>Phase 1 · UI</small>
+          Jarvis
+          <small>Phase {CURRENT_PHASE} · voice</small>
         </span>
       </div>
 

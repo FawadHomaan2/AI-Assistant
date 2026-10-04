@@ -5,7 +5,7 @@ import './VoiceButton.css';
 const LABEL: Record<string, string> = {
   off: 'Voice off',
   unavailable: 'Voice not installed',
-  listening: 'Listening for "Juno"',
+  listening: 'Listening for "Jarvis"',
   recording: 'Recording',
   thinking: 'Thinking',
   speaking: 'Speaking',

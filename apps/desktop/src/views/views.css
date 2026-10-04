@@ -6,18 +6,37 @@
   flex: 0 0 var(--rail-w);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-4);
-  overflow-y: auto;
+  min-height: 0;
   border-left: 1px solid var(--border);
   background: var(--surface-sunken);
 }
-.chatview__rail .activity { flex: 1 1 auto; }
+.chatview__rail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+.chatview__rail-scroll .activity { flex: 1 1 auto; }
+.chatview__rail-pin {
+  flex: 0 0 auto;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
 
 /* Narrow windows: drop the rail below the conversation. */
 @media (max-width: 900px) {
   .chatview { flex-direction: column; }
-  .chatview__rail { width: auto; flex: 0 0 auto; border-left: 0; border-top: 1px solid var(--border); }
+  .chatview__rail {
+    width: auto;
+    flex: 0 0 auto;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .chatview__rail-scroll { overflow-y: visible; }
 }
 
 /* ── Generic page scaffold ────────────────────────────────────────────── */
@@ -104,6 +123,59 @@
   .scopes__what { grid-column: 1 / -1; }
 }
 
+/* ── Learned memory (Privacy) ─────────────────────────────────────────── */
+.memory__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.memory__search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.memory__search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.memory { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.memory__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.memory__row:last-child { border-bottom: 0; }
+.memory__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.memory__key { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent); }
+.memory__value { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.memory__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+}
+@media (max-width: 680px) {
+  .memory__meta { width: 100%; }
+}
+
 /* ── Key/value list ──────────────────────────────────────────────────── */
 .datalist { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
 .datalist li {
@@ -166,3 +238,88 @@
 }
 .field input:disabled { opacity: 0.55; cursor: not-allowed; }
 .field input::placeholder { color: var(--text-subtle); }
+
+/* ── Security findings ────────────────────────────────────────────────── */
+.scan__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
+}
+.scan__count { font-size: var(--fs-xs); color: var(--text-subtle); }
+.scan__headline { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); line-height: 1.6; }
+.scan__error { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); color: var(--danger); }
+
+.findings { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.finding {
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.finding:last-child { border-bottom: 0; }
+.finding__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.finding__title { font-size: var(--fs-sm); }
+.finding__sev {
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.finding__why { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); line-height: 1.6; }
+.finding__meaning,
+.finding__fix {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+.finding__fix { color: var(--text-muted); }
+.finding__actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-2); }
+.finding__evidence {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  overflow-x: auto;
+  max-height: 18rem;
+}
+
+.scopes__why {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+  font-style: normal;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.scopes__controls { display: flex; align-items: center; gap: var(--sp-3); }
+
+/* ── Plugins (Settings) ───────────────────────────────────────────────── */
+.card__note--warn { color: var(--warning); }
+.plugins { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.plugin {
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.plugin:last-child { border-bottom: 0; }
+.plugin__head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.plugin__name { font-size: var(--fs-sm); }
+.plugin__version { font-size: var(--fs-xs); color: var(--text-subtle); }
+.plugin__desc { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); line-height: 1.6; }
+.plugin__scopes,
+.plugin__warn {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+.plugin__warn { color: var(--warning); }

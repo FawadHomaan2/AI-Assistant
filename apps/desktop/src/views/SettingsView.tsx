@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useStore, PHASE, CURRENT_PHASE } from '@/state/store';
+import { useStore, CURRENT_PHASE } from '@/state/store';
 import { getShellInfo, hasShell, setGlobalShortcut } from '@/lib/bridge';
+import {
+  fetchModel,
+  listModels,
+  listPlugins,
+  setPluginEnabled,
+  type ModelRow,
+  type PluginRow,
+} from '@/lib/api';
 import './views.css';
 
 type Provider = 'local' | 'cloud' | 'custom';
@@ -20,6 +28,43 @@ export function SettingsView() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [shell, setShell] = useState<string>('—');
   const requestConsent = useStore((s) => s.requestConsent);
+  const providers = useStore((s) => s.providers);
+  const core = useStore((s) => s.core);
+  const [plugins, setPlugins] = useState<PluginRow[] | null>(null);
+  const [pluginDir, setPluginDir] = useState('');
+  const [models, setModels] = useState<ModelRow[] | null>(null);
+  const [modelNote, setModelNote] = useState('');
+  const [modelError, setModelError] = useState('');
+
+  const loadModels = useCallback(async () => {
+    const res = await listModels();
+    if (!res.ok) {
+      setModels([]);
+      return;
+    }
+    setModels(res.value.models);
+    setModelNote(res.value.note);
+  }, []);
+
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
+
+  const loadPlugins = useCallback(async () => {
+    const res = await listPlugins();
+    if (!res.ok) {
+      // An empty list and an unreachable core look identical to a reader, so
+      // the failure is left visible rather than rendered as "none installed".
+      setPlugins([]);
+      return;
+    }
+    setPlugins(res.value.plugins);
+    setPluginDir(res.value.directory);
+  }, []);
+
+  useEffect(() => {
+    void loadPlugins();
+  }, [loadPlugins]);
 
   useEffect(() => {
     void getShellInfo().then((r) => {
@@ -44,7 +89,7 @@ export function SettingsView() {
   };
 
   return (
-    <Page title="Settings" subtitle={`Juno build — Phase ${CURRENT_PHASE}`}>
+    <Page title="Settings" subtitle={`Jarvis build — Phase ${CURRENT_PHASE}`}>
       <Explainer>
         API keys are never stored in configuration files and never written into
         this page. They go straight into Windows Credential Manager, and the
@@ -87,9 +132,48 @@ export function SettingsView() {
           />
         </div>
         <p className="card__note">
-          Inactive until the provider gateway lands in Phase {PHASE.aiCore}.
-          Saving a key here would have nowhere to go yet, so the field is
-          disabled rather than silently discarding what you type.
+          Editing providers from this page is not wired up yet — for now, edit{' '}
+          <code>config.toml</code> in the Jarvis data folder and restart. Keys go to
+          the Windows Credential Manager by name; the file never holds one.
+        </p>
+      </Card>
+
+      <Card title="Providers the core reports">
+        {providers.length === 0 ? (
+          <p className="card__note">
+            {core.state === 'ready'
+              ? 'The core reported no providers.'
+              : 'Not connected to the core, so there is nothing to list.'}
+          </p>
+        ) : (
+          <ul className="datalist">
+            {providers.map((p) => (
+              <li key={p.name}>
+                <span>
+                  {p.name}
+                  <span className="datalist__note"> · {p.model}</span>
+                </span>
+                <span className="datalist__v">
+                  <StatusBadge
+                    label={p.isCloud ? 'Cloud' : 'Local'}
+                    kind="info"
+                    tone={p.isCloud ? 'warning' : 'success'}
+                  />
+                </span>
+                <span className="datalist__v">
+                  <StatusBadge
+                    label={p.configured ? 'Ready' : 'Needs setup'}
+                    kind={p.configured ? 'ok' : 'blocked'}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="card__note">
+          {providers.find((p) => p.kind === 'dev_echo')
+            ? 'The development echo provider is not a language model — it reflects your message back so the pipeline can be exercised without one.'
+            : 'Local providers keep every prompt on this machine.'}
         </p>
       </Card>
 
@@ -107,7 +191,7 @@ export function SettingsView() {
         </div>
         {shortcutNote && <p className="card__note">{shortcutNote}</p>}
         <p className="card__note">
-          Pressing this anywhere in Windows shows and focuses Juno. Emergency stop
+          Pressing this anywhere in Windows shows and focuses Jarvis. Emergency stop
           is separately bound to <code>Ctrl+Shift+Esc</code> inside the app.
         </p>
       </Card>
@@ -145,7 +229,7 @@ export function SettingsView() {
               requestConsent({
                 title: 'Move 37 files into 5 new folders',
                 summary:
-                  'Juno wants to sort your Downloads folder by file type, creating 5 folders and moving 37 files into them.',
+                  'Jarvis wants to sort your Downloads folder by file type, creating 5 folders and moving 37 files into them.',
                 risk: 'medium',
                 origin: '"Organize my Downloads folder" → plan step 5 of 6',
                 targets: [
@@ -170,7 +254,7 @@ export function SettingsView() {
               requestConsent({
                 title: 'Permanently delete 37 files',
                 summary:
-                  'This bypasses the Recycle Bin. The files cannot be recovered by Juno or by Windows.',
+                  'This bypasses the Recycle Bin. The files cannot be recovered by Jarvis or by Windows.',
                 risk: 'critical',
                 origin: '"Delete the duplicates for good" → plan step 3 of 3',
                 targets: [
@@ -191,6 +275,118 @@ export function SettingsView() {
         </div>
       </Card>
 
+      <Card title="Downloadable models">
+        <p className="card__note">{modelNote || 'Asking the core…'}</p>
+        {modelError && <p className="scan__error">{modelError}</p>}
+        {models !== null && (
+          <ul className="datalist">
+            {models.map((m) => (
+              <li key={m.key}>
+                <span>
+                  {m.name}
+                  <em className="scopes__why">{m.enables}</em>
+                  {!m.installed && !m.fetchable && (
+                    <em className="plugin__warn">{m.reason}</em>
+                  )}
+                </span>
+                <span className="datalist__v">{m.sizeMb} MB</span>
+                {m.installed ? (
+                  <StatusBadge label="Installed" kind="ok" tone="accent" />
+                ) : m.fetchable ? (
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    onClick={async () => {
+                      setModelError('');
+                      const res = await fetchModel(m.key);
+                      if (!res.ok) setModelError(`${m.name} could not be downloaded.`);
+                      void loadModels();
+                    }}
+                  >
+                    Download {m.sizeMb} MB
+                  </button>
+                ) : (
+                  <StatusBadge label="Unavailable" kind="blocked" tone="muted" />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card title="Plugins">
+        <p className="card__note">
+          Plugins add capabilities. Each runs in its own process with no
+          inherited credentials, and can only do what its manifest declares,
+          what you approve here, and what Jarvis itself is allowed to do —
+          whichever is narrowest. Nothing is enabled until you enable it.
+        </p>
+        <p className="card__note card__note--warn">
+          This is a process boundary, not a sandbox: a plugin runs as you, with
+          your file access and your network. Enable one only if you trust whoever
+          wrote it.
+        </p>
+        {plugins === null ? (
+          <p className="card__note">Asking the core…</p>
+        ) : plugins.length === 0 ? (
+          <p className="card__note">
+            No plugins installed. Drop a folder containing a <code>plugin.json</code>{' '}
+            into <code>{pluginDir || 'the plugins folder'}</code> and it will appear
+            here, switched off.
+          </p>
+        ) : (
+          <ul className="plugins">
+            {plugins.map((p) => (
+              <li key={p.name} className="plugin">
+                <div className="plugin__head">
+                  <strong className="plugin__name">{p.name}</strong>
+                  <span className="plugin__version">v{p.version}</span>
+                  <StatusBadge
+                    label={p.error ? 'Unusable' : p.enabled ? 'On' : 'Off'}
+                    kind={p.error ? 'failed' : p.enabled ? 'ok' : 'blocked'}
+                    tone={p.enabled && !p.error ? 'accent' : 'muted'}
+                  />
+                  {p.running && <StatusBadge label="Running" kind="pending" tone="muted" />}
+                </div>
+                <p className="plugin__desc">{p.error || p.description}</p>
+                <p className="plugin__scopes">
+                  {p.scopes.length === 0
+                    ? 'Needs no permissions.'
+                    : `Asks for: ${p.scopeDetail.map((d) => d.description).join(', ')}.`}
+                  {p.enabled && p.scopes.length > 0 && p.effectiveScopes.length < p.scopes.length && (
+                    <em> Jarvis does not hold all of these, so the plugin has fewer.</em>
+                  )}
+                </p>
+                {p.needsReapproval && (
+                  <p className="plugin__warn">
+                    This plugin now asks for more than you approved. It will not run
+                    until you enable it again.
+                  </p>
+                )}
+                {!p.error && (
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    onClick={async () => {
+                      await setPluginEnabled(p.name, !p.enabled);
+                      void loadPlugins();
+                    }}
+                  >
+                    {p.enabled
+                      ? 'Turn off'
+                      : p.scopes.length === 0
+                        ? 'Enable — it needs no permissions'
+                        : `Enable and allow ${p.scopes.length} permission${
+                            p.scopes.length === 1 ? '' : 's'
+                          }`}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       <Card title="Build">
         <ul className="datalist">
           <li>
@@ -200,7 +396,28 @@ export function SettingsView() {
           <li>
             <span>AI core</span>
             <span className="datalist__v">
-              <StatusBadge label={`Phase ${PHASE.aiCore}`} kind="blocked" tone="muted" />
+              {core.state === 'ready' ? (
+                <StatusBadge label={`v${core.health.version}`} kind="ok" />
+              ) : (
+                <StatusBadge
+                  label={core.state === 'connecting' ? 'Connecting' : 'Unavailable'}
+                  kind={core.state === 'connecting' ? 'pending' : 'failed'}
+                />
+              )}
+            </span>
+          </li>
+          <li>
+            <span>Credential store</span>
+            <span className="datalist__v">
+              {core.state === 'ready' ? (
+                <StatusBadge
+                  label={core.health.credentialStore.available ? 'Available' : 'Unavailable'}
+                  kind={core.health.credentialStore.available ? 'ok' : 'blocked'}
+                  title={core.health.credentialStore.detail}
+                />
+              ) : (
+                <span className="datalist__note">—</span>
+              )}
             </span>
           </li>
           <li>

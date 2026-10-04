@@ -4,14 +4,16 @@ import './StatusBadge.css';
 /**
  * State indicator.
  *
- * The palette has no status colours, so tone only varies emphasis (accent vs
- * muted) and the icon + label always carry the actual meaning. That is a
- * constraint, but it also makes the UI readable for colour-blind users and in
- * greyscale — state is never colour-only.
+ * Colour now carries meaning (success / warning / danger / notice), but it is
+ * never the only carrier: every badge also has an icon and a text label. That
+ * keeps state readable in greyscale, for colour-blind users, and in a
+ * screenshot pasted into a bug report.
  */
-export type Tone = 'neutral' | 'accent' | 'muted';
+export type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'notice' | 'muted';
 
-const ICONS: Record<string, IconName> = {
+export type BadgeKind = 'ok' | 'attention' | 'pending' | 'blocked' | 'failed' | 'info';
+
+const ICONS: Record<BadgeKind, IconName> = {
   ok: 'check',
   attention: 'alert',
   pending: 'clock',
@@ -20,20 +22,31 @@ const ICONS: Record<string, IconName> = {
   info: 'info',
 };
 
+/** Sensible tone for a kind, so callers only override when they mean to. */
+const DEFAULT_TONE: Record<BadgeKind, Tone> = {
+  ok: 'success',
+  attention: 'warning',
+  pending: 'neutral',
+  blocked: 'muted',
+  failed: 'danger',
+  info: 'notice',
+};
+
 export function StatusBadge({
   label,
   kind = 'info',
-  tone = 'neutral',
+  tone,
   title,
 }: {
   label: string;
-  kind?: keyof typeof ICONS;
+  kind?: BadgeKind;
   tone?: Tone;
   title?: string;
 }) {
+  const resolved = tone ?? DEFAULT_TONE[kind];
   return (
-    <span className={`badge badge--${tone}`} title={title ?? label}>
-      <Icon name={ICONS[kind] ?? 'info'} size={12} strokeWidth={2.2} />
+    <span className={`badge badge--${resolved}`} title={title ?? label}>
+      <Icon name={ICONS[kind]} size={12} strokeWidth={2.2} />
       <span>{label}</span>
     </span>
   );

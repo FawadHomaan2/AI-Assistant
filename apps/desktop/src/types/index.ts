@@ -64,6 +64,11 @@ export interface ConsentRequest {
   blastRadius: string;
   /** Tier 4-5 require typing this phrase before Confirm enables. */
   confirmPhrase?: string;
+  /**
+   * True for a prompt generated in the UI (the Settings preview) rather than by
+   * the core. A local prompt has nothing waiting on its answer.
+   */
+  local?: boolean;
   /** Scoped-remember is never offered above tier 3. */
   allowRemember: boolean;
 }
@@ -106,3 +111,142 @@ export type Loadable<T> =
   | { state: 'unavailable'; reason: Unavailable };
 
 export type ViewId = 'chat' | 'security' | 'activity' | 'privacy' | 'settings';
+
+// ── Phase 2: the core ────────────────────────────────────────────────────
+
+/** Where the Python core is listening, from the Rust sidecar handshake. */
+export interface CoreEndpoint {
+  baseUrl: string;
+  wsUrl: string;
+  token: string;
+  version: string;
+  pid: number;
+}
+
+/** What the router decided a message was asking for. */
+export type IntentId = 'chat' | 'computer_task' | 'diagnostic' | 'security' | 'memory';
+
+/** A step the planner produced. */
+export interface PlanStep {
+  tool: string;
+  args: Record<string, unknown>;
+  rationale: string;
+}
+
+/** Streamed agent events. Mirrors jarvis/agents/types.py. */
+export type AgentEvent =
+  | { type: 'turn.start'; turn_id: string; session_id: string }
+  | {
+      type: 'route';
+      intent: IntentId;
+      confidence: number;
+      reason: string;
+      signals: string[];
+      available_in_phase: number;
+      session_id?: string;
+    }
+  | { type: 'delta'; text: string; session_id?: string }
+  | {
+      type: 'notice';
+      message: string;
+      /**
+       * Notices arrive from two places and carry different fields. The
+       * orchestrator sends "this capability is not built yet" with an intent
+       * and the phase that delivers it; the executor sends "this action was
+       * refused" with the tool and why. Everything but `message` is therefore
+       * optional, and reading one shape's field off the other is a crash.
+       */
+      intent?: IntentId;
+      available_in_phase?: number;
+      tool?: string;
+      denialCode?: string;
+      missingScopes?: string[];
+      blocked?: boolean;
+      session_id?: string;
+    }
+  | {
+      type: 'memory.recalled';
+      memories: { id: string; key: string; sentence: string; confidence: number }[];
+    }
+  | {
+      type: 'memory.learned';
+      message: string;
+      memories: { id: string; key: string; sentence: string; confidence: number }[];
+    }
+  | {
+      type: 'memory.forgotten';
+      message: string;
+      removed: { id: string; key: string; sentence: string }[];
+    }
+  | { type: 'error'; code: string; message: string; provider?: string; session_id?: string }
+  | {
+      type: 'turn.end';
+      elapsed_ms: number;
+      handled: string;
+      provider?: string;
+      model?: string;
+      is_cloud?: boolean;
+      tokens_in?: number | null;
+      tokens_out?: number | null;
+      stop_reason?: string | null;
+      session_id?: string;
+    }
+  | {
+      type: 'plan';
+      steps: PlanStep[];
+      unsupported: string;
+      session_id?: string;
+    }
+  | {
+      type: 'tool.planned';
+      tool: string;
+      operation: string;
+      summary: string;
+      affected: number;
+      risk: RiskTier;
+      verdict: 'allow' | 'confirm' | 'deny';
+      reason: string;
+      session_id?: string;
+    }
+  | {
+      type: 'tool.result';
+      tool: string;
+      operation: string;
+      ok: boolean;
+      summary: string;
+      changes: string[];
+      data: Record<string, unknown>;
+      verified: boolean;
+      elapsedMs: number;
+      risk: RiskTier;
+      session_id?: string;
+    }
+  | ({ type: 'consent.request'; session_id?: string } & ConsentRequest)
+  | { type: 'pong' };
+
+export interface ProviderInfo {
+  name: string;
+  kind: string;
+  model: string;
+  streaming: boolean;
+  tools: boolean;
+  isCloud: boolean;
+  configured: boolean;
+  detail: string;
+}
+
+export interface CoreHealth {
+  status: string;
+  version: string;
+  schemaVersion: number;
+  mode: string;
+  emergencyStop: boolean;
+  defaultProvider: string;
+  credentialStore: { available: boolean; backend: string; detail: string };
+}
+
+/** Connection state of the core, so the UI can explain itself. */
+export type CoreState =
+  | { state: 'connecting' }
+  | { state: 'ready'; endpoint: CoreEndpoint; health: CoreHealth }
+  | { state: 'failed'; message: string };

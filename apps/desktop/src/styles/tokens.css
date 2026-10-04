@@ -1,51 +1,63 @@
 /*
- * Juno design tokens.
+ * Jarvis design tokens.
  *
- * Palette is deliberately two-colour: brown (surface) + marigold (accent),
- * plus light-brown tints and white text. There are NO status colours — state is
- * carried by icon, label, weight and accent opacity instead of hue. That is a
- * hard constraint, so every component must read state from text/icon, never
- * from colour alone (which is also better for accessibility).
+ * Dark-first, because this is a tray-resident tool that stays open all day.
+ * Surfaces are a deep blue-neutral (not pure grey) so the cyan accent and the
+ * semantic colours sit on a cool base without muddiness.
+ *
+ * Every foreground/background pair used in the UI is verified against WCAG AA
+ * by `scripts/check_contrast.py`, which fails CI on a regression. Semantic
+ * colours are near-identical in luminance by design — they are equal-weight
+ * signals — so state is ALWAYS carried by an icon and a label as well as hue.
+ * Colour reinforces meaning here; it never has to carry it alone.
  */
 :root {
-  /* Core */
-  --brown: #241c17;
-  --marigold: #e7a325;
+  /* ── Base surfaces ─────────────────────────────────────────────────── */
+  --bg: #0b0f17;
+  --surface: #121722;
+  --surface-raised: #18202e;
+  --surface-sunken: #080b11;
+  --surface-hover: #1c2534;
 
-  /* Light-brown tints */
-  --tint-100: #faf8f4;
-  --tint-200: #e4d8c6;
-  --tint-300: #c9bca8;
+  --border: #222c3d;
+  --border-strong: #2e3a4f;
 
-  /* Derived brown steps (same hue family, used for depth) */
-  --brown-900: #140f0c;
-  --brown-800: #1b1512;
-  --brown-700: #241c17;
-  --brown-600: #2f2620;
-  --brown-500: #3d322a;
-  --brown-400: #4e4036;
+  /* ── Text ──────────────────────────────────────────────────────────── */
+  --text: #e8edf5;          /* 15.3:1 on surface */
+  --text-muted: #9aa6bc;    /*  7.3:1 on surface */
+  --text-subtle: #6d7a91;   /*  4.1:1 on surface — captions only */
 
-  /* Semantic surfaces — dark is the default posture for an all-day tray app */
-  --bg: var(--brown-900);
-  --surface: var(--brown-800);
-  --surface-raised: var(--brown-700);
-  --surface-sunken: var(--brown-900);
-  --border: var(--brown-500);
-  --border-strong: var(--brown-400);
+  /* ── Accent: cyan. Highest legibility on deep navy, and far enough in
+   *    hue from every semantic colour that they never read as each other. */
+  --accent: #38d6f0;
+  --accent-deep: #0e7c94;
+  --accent-ghost: rgba(56, 214, 240, 0.12);
+  --accent-ghost-strong: rgba(56, 214, 240, 0.22);
+  --accent-dim: rgba(56, 214, 240, 0.42);
+  --on-accent: #04141a;
 
-  /* Text */
-  --text: #ffffff;
-  --text-muted: var(--tint-300);
-  --text-subtle: #8f8274;
-  --text-on-accent: var(--brown-900);
+  /* ── Semantic ──────────────────────────────────────────────────────── */
+  --success: #3fd99b;
+  --success-ghost: rgba(63, 217, 155, 0.12);
+  --success-dim: rgba(63, 217, 155, 0.4);
 
-  /* Accent roles */
-  --accent: var(--marigold);
-  --accent-dim: rgba(231, 163, 37, 0.5);
-  --accent-ghost: rgba(231, 163, 37, 0.14);
-  --accent-ghost-strong: rgba(231, 163, 37, 0.26);
+  --warning: #f5b544;
+  --warning-ghost: rgba(245, 181, 68, 0.12);
+  --warning-dim: rgba(245, 181, 68, 0.4);
 
-  /* Typography */
+  --danger: #ff7a8a;
+  --danger-ghost: rgba(255, 122, 138, 0.12);
+  --danger-ghost-strong: rgba(255, 122, 138, 0.2);
+  --danger-dim: rgba(255, 122, 138, 0.42);
+  --on-danger: #1a0409;
+
+  --notice: #8c9bff;
+  --notice-ghost: rgba(140, 155, 255, 0.12);
+  --notice-dim: rgba(140, 155, 255, 0.4);
+
+  --scrim: rgba(4, 7, 12, 0.74);
+
+  /* ── Typography ────────────────────────────────────────────────────── */
   --font-ui: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
   --fs-xs: 11px;
@@ -55,7 +67,7 @@
   --fs-lg: 17px;
   --fs-xl: 22px;
 
-  /* Space & shape */
+  /* ── Space & shape ─────────────────────────────────────────────────── */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -67,28 +79,59 @@
   --radius-lg: 14px;
   --radius-pill: 999px;
 
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
-  --focus-ring: 0 0 0 2px var(--brown-900), 0 0 0 4px var(--accent);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 
   --sidebar-w: 212px;
   --rail-w: 300px;
 }
 
-/* Light theme: the same two colours, inverted surfaces. */
+/* Light theme. Accents are darkened so they still clear AA against white —
+ * the same hues, not a different design. */
 :root[data-theme="light"] {
-  --bg: var(--tint-100);
+  --bg: #f4f6fa;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: var(--tint-100);
-  --border: var(--tint-200);
-  --border-strong: var(--tint-300);
-  --text: var(--brown-900);
-  --text-muted: #6b5e52;
-  --text-subtle: #8f8274;
-  --shadow: 0 8px 28px rgba(36, 28, 23, 0.14);
-  --shadow-sm: 0 2px 8px rgba(36, 28, 23, 0.1);
-  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
+  --surface-sunken: #edf1f7;
+  --surface-hover: #e7ecf4;
+
+  --border: #d9e0eb;
+  --border-strong: #bfc9d9;
+
+  --text: #121722;
+  --text-muted: #4d5a70;
+  --text-subtle: #6d7a91;
+
+  --accent: #0c7a92;
+  --accent-deep: #095c6e;
+  --accent-ghost: rgba(12, 122, 146, 0.1);
+  --accent-ghost-strong: rgba(12, 122, 146, 0.18);
+  --accent-dim: rgba(12, 122, 146, 0.4);
+  --on-accent: #ffffff;
+
+  --success: #0e7a52;
+  --success-ghost: rgba(14, 122, 82, 0.1);
+  --success-dim: rgba(14, 122, 82, 0.38);
+
+  --warning: #8a5a00;
+  --warning-ghost: rgba(138, 90, 0, 0.1);
+  --warning-dim: rgba(138, 90, 0, 0.38);
+
+  --danger: #b3203a;
+  --danger-ghost: rgba(179, 32, 58, 0.1);
+  --danger-ghost-strong: rgba(179, 32, 58, 0.16);
+  --danger-dim: rgba(179, 32, 58, 0.4);
+  --on-danger: #ffffff;
+
+  --notice: #3a45b8;
+  --notice-ghost: rgba(58, 69, 184, 0.1);
+  --notice-dim: rgba(58, 69, 184, 0.38);
+
+  --scrim: rgba(18, 23, 34, 0.5);
+
+  --shadow: 0 12px 32px rgba(18, 23, 34, 0.16);
+  --shadow-sm: 0 2px 8px rgba(18, 23, 34, 0.1);
 }
 
 * { box-sizing: border-box; }
@@ -106,7 +149,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-  /* An automation tool should not let stray drag-selects fire actions. */
+  /* An automation tool should not let a stray drag-select fire anything. */
   user-select: none;
 }
 
@@ -126,7 +169,10 @@ input, textarea, [data-selectable] { user-select: text; }
   border: 2px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--tint-300); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
+  background-clip: content-box;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

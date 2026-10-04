@@ -22,7 +22,7 @@
 .voicebtn--listening {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--text-on-accent);
+  color: var(--on-accent);
 }
 .voicebtn--speaking { color: var(--accent); border-color: var(--accent); }
 

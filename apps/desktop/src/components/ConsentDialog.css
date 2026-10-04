@@ -5,11 +5,17 @@
   display: grid;
   place-items: center;
   padding: var(--sp-5);
-  background: rgba(20, 15, 12, 0.72);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
 }
 
 .consent {
+  /* --sev is the dialog's severity colour; each modifier below rebinds it. */
+  --sev: var(--accent);
+  --sev-dim: var(--accent-dim);
+  --sev-ghost: var(--accent-ghost);
+  --on-sev: var(--on-accent);
+
   width: min(560px, 100%);
   max-height: 100%;
   overflow-y: auto;
@@ -18,8 +24,22 @@
   padding: var(--sp-5);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
-  border: 1px solid var(--accent-dim);
+  border: 1px solid var(--sev-dim);
+  border-top: 3px solid var(--sev);
   box-shadow: var(--shadow);
+}
+
+.consent--warning {
+  --sev: var(--warning);
+  --sev-dim: var(--warning-dim);
+  --sev-ghost: var(--warning-ghost);
+  --on-sev: var(--on-accent);
+}
+.consent--danger {
+  --sev: var(--danger);
+  --sev-dim: var(--danger-dim);
+  --sev-ghost: var(--danger-ghost);
+  --on-sev: var(--on-danger);
 }
 
 .consent__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
@@ -30,8 +50,8 @@
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--sev);
+  color: var(--on-sev);
 }
 .consent__head h2 { margin: 0; font-size: var(--fs-lg); line-height: 1.25; }
 .consent__risk {
@@ -39,8 +59,12 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--sev);
 }
+
+/* Permanent or unknown reversibility is the single most important fact in this
+   dialog, so it is the only field that is coloured. */
+.consent__irreversible { color: var(--danger); }
 
 .consent__summary { margin: 0; line-height: 1.6; }
 
@@ -105,8 +129,8 @@
   font-family: var(--font-mono);
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--accent-ghost);
-  color: var(--accent);
+  background: var(--sev-ghost);
+  color: var(--sev);
   font-weight: 700;
 }
 .consent__phrase input, .consent__remember select {
@@ -129,7 +153,8 @@
   border: 1px solid transparent;
   transition: opacity 120ms ease;
 }
-.btn--primary { background: var(--accent); color: var(--text-on-accent); }
+.btn--primary { background: var(--accent); color: var(--on-accent); }
+.consent .btn--primary { background: var(--sev); color: var(--on-sev); }
 .btn--primary:disabled { opacity: 0.35; cursor: not-allowed; }
 .btn--ghost { background: transparent; color: var(--text-muted); border-color: var(--border-strong); }
-.btn--ghost:hover { color: var(--text); border-color: var(--tint-300); }
+.btn--ghost:hover { color: var(--text); border-color: var(--border-strong); }

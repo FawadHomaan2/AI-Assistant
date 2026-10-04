@@ -31,7 +31,7 @@ export function EmergencyStopBanner() {
     <div className="estop-banner" role="alert">
       <Icon name="alert" size={16} />
       <span className="estop-banner__text">
-        <strong>Emergency stop is active.</strong> All automation is halted and Juno
+        <strong>Emergency stop is active.</strong> All automation is halted and Jarvis
         is paused. Nothing will run until you clear this.
       </span>
       <button type="button" className="estop-banner__resume" onClick={resume}>

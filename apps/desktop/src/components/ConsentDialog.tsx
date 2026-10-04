@@ -6,7 +6,7 @@ import './ConsentDialog.css';
 
 const REVERSIBILITY: Record<ConsentRequest['reversible'], string> = {
   'recycle-bin': 'Recoverable — items go to the Recycle Bin',
-  undoable: 'Reversible — Juno can undo this',
+  undoable: 'Reversible — Jarvis can undo this',
   permanent: 'Permanent — this cannot be undone',
   unknown: 'Reversibility unknown — treat as permanent',
 };
@@ -17,6 +17,19 @@ const RISK_LABEL: Record<ConsentRequest['risk'], string> = {
   medium: 'Medium risk',
   high: 'High risk',
   critical: 'Critical',
+};
+
+/**
+ * Risk tier → visual severity. A medium-risk file move and a disk format must
+ * not look alike; the dialog escalates with the tier so the difference is
+ * legible before you read a word.
+ */
+const RISK_TONE: Record<ConsentRequest['risk'], 'accent' | 'warning' | 'danger'> = {
+  safe: 'accent',
+  low: 'accent',
+  medium: 'warning',
+  high: 'danger',
+  critical: 'danger',
 };
 
 /**
@@ -61,7 +74,7 @@ export function ConsentDialog() {
   return (
     <div className="consent__backdrop" role="presentation">
       <div
-        className="consent"
+        className={`consent consent--${RISK_TONE[consent.risk]}`}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="consent-title"
@@ -90,7 +103,15 @@ export function ConsentDialog() {
           </div>
           <div>
             <dt>Reversibility</dt>
-            <dd>{REVERSIBILITY[consent.reversible]}</dd>
+            <dd
+              className={
+                consent.reversible === 'permanent' || consent.reversible === 'unknown'
+                  ? 'consent__irreversible'
+                  : undefined
+              }
+            >
+              {REVERSIBILITY[consent.reversible]}
+            </dd>
           </div>
           <div>
             <dt>Blast radius</dt>

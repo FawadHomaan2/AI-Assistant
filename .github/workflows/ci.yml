@@ -23,6 +23,13 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
+      # A lockfile regenerated on Linux keeps the Linux native binaries and
+      # drops every other platform's, which installs cleanly here and breaks
+      # only on Windows. This job cannot notice that by running npm ci, so the
+      # lockfile's contents are asserted directly.
+      - name: Lockfile carries every platform's native binaries
+        working-directory: .
+        run: python3 scripts/check_lockfile_platforms.py
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -125,8 +132,13 @@ jobs:
   windows-build:
     name: Windows installer
     runs-on: windows-latest
-    # The real artefact. Only on the default branch, since it is slow.
-    if: github.ref == 'refs/heads/main'
+    # The real artefact, and the only job that needs a Windows runner. Slow, so
+    # it is skipped on ordinary branch pushes — but it runs on pull requests as
+    # well as on main. It used to run on main alone, which meant the first time
+    # it ever executed was *after* Phases 2-12 merged, where it failed on a
+    # lockfile problem no Linux job could see. A build this platform-specific
+    # has to be provable before the merge, not discovered after it.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     defaults:
       run:
         working-directory: apps/desktop

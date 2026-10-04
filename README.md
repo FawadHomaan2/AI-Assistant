@@ -20,12 +20,15 @@ Say **"Jarvis"** — or press `Ctrl+Space`.
 > else and paste what it just read is refused by the gate rather than by the
 > model's good judgement.
 >
-> Everything through Phase 11 runs and is tested. **The Windows installer has
-> never been built** — PyInstaller and the WebView2 shell do not cross-compile,
-> and this repository is authored in a Linux container. The packaging is
-> written and structurally tested; no `.exe` exists and none has been installed.
-> See [docs/PACKAGING.md](docs/PACKAGING.md) for the checklist that would have
-> to pass.
+> Everything through Phase 11 runs and is tested, and **the Windows installer
+> now builds** — CI produces a ~30.7 MB `jarvis-installer` artifact on every
+> pull request. **It has never been run.** Nothing has been installed, and no
+> part of the app has started on Windows: this repository is authored in a Linux
+> container, so the tray, the global shortcut, launching applications, window
+> management, the Defender/firewall/BitLocker checks, USB history and autostart
+> have only ever executed against fakes. See
+> [docs/PACKAGING.md](docs/PACKAGING.md) for the checklist that would have to
+> pass — nothing on it is ticked.
 >
 > Plugins run in their own process with no inherited credentials, and can only
 > do what their manifest declares, what you approved, and what Jarvis itself
@@ -235,10 +238,20 @@ python3 scripts/check_contrast.py                  # WCAG AA, both themes
 ```
 
 ### Build the installer (Windows only)
-```bash
-cd apps/desktop
-npm run tauri build     # → src-tauri/target/release/bundle/nsis/*-setup.exe
+```powershell
+pwsh -File scripts/build_windows.ps1    # → apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
 ```
+Use the script rather than calling Tauri directly. `npm run tauri build` on its
+own fails: Tauri resolves the sidecar binary at compile time, so
+`jarvis-core-<target-triple>.exe` has to be frozen by PyInstaller and placed in
+`src-tauri/binaries/` *before* the bundle is built. The script does that in
+order, runs both test suites first, and refuses to produce an installer if
+either fails — an installer built from failing tests is worse than no installer,
+because it looks finished.
+
+It needs Python 3.11, Node 20+, Rust stable with the MSVC toolchain, and the
+MSVC build tools; `docs/PACKAGING.md` lists them with versions.
+
 Unsigned builds trigger SmartScreen and may be flagged by antivirus heuristics —
 an app that spawns processes and synthesises input looks like malware to a
 scanner. Code signing is part of Phase 12; see ARCHITECTURE.md §16 and §18.

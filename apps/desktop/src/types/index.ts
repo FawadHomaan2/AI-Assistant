@@ -222,6 +222,24 @@ export type AgentEvent =
       session_id?: string;
     }
   | ({ type: 'consent.request'; session_id?: string } & ConsentRequest)
+  // Voice pipeline events. Mirrors the PipelineEvent types emitted by
+  // jarvis/voice/pipeline.py and jarvis/voice/capture.py. `voice.state` is the
+  // authority on what the microphone is doing — every transition in the core
+  // goes through one method that emits it.
+  | { type: 'voice.state'; state: string }
+  | { type: 'voice.wake'; word?: string }
+  | {
+      type: 'voice.transcript';
+      text: string;
+      confidence?: number;
+      language?: string;
+      durationSeconds?: number;
+      model?: string;
+    }
+  | { type: 'voice.interrupted' }
+  | { type: 'voice.audio'; text?: string; bytes?: number }
+  | { type: 'voice.unavailable'; component?: string; detail?: string }
+  | { type: 'voice.error'; detail?: string }
   | { type: 'pong' };
 
 export interface ProviderInfo {

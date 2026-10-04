@@ -20,12 +20,15 @@ quality problem. A mismatch deletes the file and refuses.
 are renamed only after verification, so an interrupted fetch cannot leave a
 truncated model that then fails mysteriously at load time.
 
-The checksums below are recorded as empty where they have not been verified
-against an actual download. An empty checksum means the entry is **not
-fetchable**: Jarvis refuses rather than downloading something it cannot check,
-and says so. Filling these in is a release task that needs the real files, and
-docs/PACKAGING.md says so rather than leaving a plausible-looking hash that
-nobody ever checked.
+A checksum is recorded only once it has been verified against an actual
+download. An empty one means the entry is **not fetchable**: Jarvis refuses
+rather than downloading something it cannot check, and says so.
+
+The three openWakeWord models carry real checksums — each file was downloaded
+and hashed, so the wake word is fetchable. Whisper, Piper and MiniLM are still
+empty and therefore still refused; filling them in needs the real files, and
+docs/PACKAGING.md says how. A plausible-looking hash that nobody ever checked
+would be worse than an empty one, because it would look finished.
 """
 
 from __future__ import annotations
@@ -44,6 +47,17 @@ log = get_logger(__name__)
 
 #: Read in chunks: a 500 MB model must not be held in memory to be hashed.
 CHUNK = 1024 * 256
+
+#: openWakeWord's pinned release. Pinned to a tag, not to `latest`, so the
+#: recorded checksums keep matching what the URL serves.
+_OWW_RELEASE = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
+
+#: Where the detector looks. `jarvis.voice.wake` reads this same folder, and the
+#: two disagreeing is how a model lands on disk somewhere nothing reads it.
+_OWW_FOLDER = "openwakeword"
+
+#: Piper's voices, pinned to a revision for the same reason as above.
+_PIPER_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium"
 
 
 class ModelError(JarvisError):
@@ -70,6 +84,10 @@ class ModelSpec:
     sha256: str = ""
     #: Subfolder under the models directory.
     folder: str = ""
+    #: Other catalogue keys this model cannot run without. openWakeWord needs a
+    #: mel-spectrogram front end and a speech-embedding model in addition to the
+    #: wake word itself, and a wake word file on its own does nothing.
+    requires: tuple[str, ...] = ()
 
     @property
     def fetchable(self) -> bool:
@@ -106,6 +124,15 @@ class ModelSpec:
 #: Everything Jarvis can use but does not ship. Sizes are approximate and are
 #: shown before any download starts.
 CATALOGUE: tuple[ModelSpec, ...] = (
+    # Whisper is the one entry Jarvis does not fetch itself. faster-whisper
+    # resolves and downloads its own weights through huggingface_hub on first
+    # load, into `models/whisper` — so a catalogue URL here would be a second,
+    # competing download path, and the `model.bin` this used to name was in a
+    # folder (`whisper-base-en`) that nothing ever read or wrote.
+    #
+    # It stays listed because the interface should say the model exists, how big
+    # it is and whether it is present. `url` is empty, so `fetchable` is false
+    # and nothing tries: `POST /voice/stt/prepare` triggers the real download.
     ModelSpec(
         key="whisper-base-en",
         name="Whisper base.en",
@@ -113,25 +140,69 @@ CATALOGUE: tuple[ModelSpec, ...] = (
         filename="model.bin",
         url="",
         size_mb=74,
-        folder="whisper-base-en",
+        folder="whisper",
     ),
+    # Piper needs its JSON config beside the model: it carries the sample rate
+    # and the phoneme map, and loading without it fails in a way that reads
+    # like a corrupt model.
     ModelSpec(
         key="piper-en-us",
         name="Piper en_US voice",
         enables="Speaking replies out loud",
         filename="en_US-lessac-medium.onnx",
-        url="",
-        size_mb=63,
+        url=f"{_PIPER_BASE}/en_US-lessac-medium.onnx?download=true",
+        sha256="5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
+        size_mb=61,
+        folder="piper",
+        requires=("piper-en-us-config",),
+    ),
+    ModelSpec(
+        key="piper-en-us-config",
+        name="Piper en_US voice config",
+        enables="Telling Piper the voice's sample rate and phonemes",
+        filename="en_US-lessac-medium.onnx.json",
+        url=f"{_PIPER_BASE}/en_US-lessac-medium.onnx.json?download=true",
+        sha256="efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
+        size_mb=1,
         folder="piper",
     ),
+    # The wake word is three ONNX graphs: audio becomes a mel-spectrogram,
+    # the spectrogram becomes a speech embedding, and the embedding is scored
+    # for "hey jarvis". All three are small, and all three are required —
+    # `requires` below is what makes asking for one fetch the set.
+    #
+    # The checksums are of the actual files served by these URLs, hashed after
+    # downloading them. They are not placeholders.
     ModelSpec(
         key="openwakeword-hey-jarvis",
         name="openWakeWord hey_jarvis",
         enables='Waking up when you say "Jarvis"',
         filename="hey_jarvis_v0.1.onnx",
-        url="",
-        size_mb=2,
-        folder="wakeword",
+        url=f"{_OWW_RELEASE}/hey_jarvis_v0.1.onnx",
+        sha256="94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb",
+        size_mb=1,
+        folder=_OWW_FOLDER,
+        requires=("openwakeword-melspectrogram", "openwakeword-embedding"),
+    ),
+    ModelSpec(
+        key="openwakeword-melspectrogram",
+        name="openWakeWord mel-spectrogram",
+        enables="Turning microphone audio into features the wake word can score",
+        filename="melspectrogram.onnx",
+        url=f"{_OWW_RELEASE}/melspectrogram.onnx",
+        sha256="ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+        size_mb=1,
+        folder=_OWW_FOLDER,
+    ),
+    ModelSpec(
+        key="openwakeword-embedding",
+        name="openWakeWord speech embedding",
+        enables="Turning those features into a speech embedding",
+        filename="embedding_model.onnx",
+        url=f"{_OWW_RELEASE}/embedding_model.onnx",
+        sha256="70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+        size_mb=1,
+        folder=_OWW_FOLDER,
     ),
     ModelSpec(
         key="minilm-l6-v2",
@@ -216,6 +287,11 @@ def fetch(key: str, opener: Any = None) -> Path:
     spec = BY_KEY.get(key)
     if spec is None:
         raise ModelError(f"There is no model called {key!r}.")
+    # Dependencies first. A wake word file with no mel-spectrogram model beside
+    # it loads and then fails at the first frame, which is a worse failure than
+    # refusing up front.
+    for required in spec.requires:
+        fetch(required, opener=opener)
     if spec.installed():
         return spec.path()
     if not spec.fetchable:

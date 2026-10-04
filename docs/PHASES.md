@@ -216,7 +216,7 @@ system partitions as critically full — five false criticals on a normal machin
 Read-only volumes and anything under 4 GB are now skipped, which matters as much
 on Windows (recovery partitions, mounted ISOs) as here.
 
-## Phase 6 — Voice · **done (pipeline); audio capture pending**
+## Phase 6 — Voice · **wake word works; not in the packaged build**
 
 Shipped: the full pipeline — ring-buffered capture, voice activity detection,
 speech-to-text, text-to-speech, wake word, barge-in, and a state machine whose
@@ -243,6 +243,87 @@ clipped. Without it the wake word eats the beginning of every command.
 **Why `hey_jarvis`:** openWakeWord ships it pretrained, so voice needs no
 training data and its accuracy comes from a model trained on far more speakers
 than we could gather. This is the reason the assistant has this name.
+
+---
+
+### Capture, and four bugs that made this not work at all
+
+The pipeline above was complete and **unreachable**. No module imported
+`sounddevice`, nothing called `push_audio`, and there was no route to start
+listening. `jarvis/voice/capture.py` is that missing half: a bounded queue
+joining PortAudio's callback thread to the asyncio loop, dropping the oldest
+frame when inference falls behind and counting the drops rather than hiding
+them, with an injectable source so the path can be exercised on a machine with
+no audio device — which is every machine this repository was developed on.
+
+Wiring it up exposed four defects that no test using a fake could have found:
+
+**The wake word could never have fired.** openWakeWord keys `predict()` by the
+model file's stem when loaded by path — `hey_jarvis_v0.1`, not `hey_jarvis`. The
+detector looked up the wake word, got nothing, and scored 0.0 on every frame
+forever. It would have run, consumed CPU and never once woken up.
+`tests/test_voice_wake_real.py` pins this against the real model, because a fake
+detector reports whatever it is told to.
+
+**The download went where nothing reads.** The catalogue fetched the wake word
+into `models/wakeword/`; the detector looked in `models/openwakeword/`. Whisper
+had the same disagreement — `models/whisper-base-en/model.bin` against
+`models/whisper`, a file nothing ever wrote or read.
+
+**Speaking was broken.** `synthesise` called `voice.synthesize(text, wav_file)`,
+removed in Piper 1.3, where the second positional argument became a synthesis
+config. It raised "Error # channels not specified", which reads like a corrupt
+voice model. The extra now requires `piper-tts>=1.3` and the code streams chunks.
+
+**There was no way to get the speech model.** `status` reported it missing, the
+pipeline refused to listen while anything was missing, and the model only
+downloaded inside `transcribe` — which could not run until listening had
+started. `POST /voice/stt/prepare` breaks that circle.
+
+Also: `import sounddevice` raises `OSError`, not `ImportError`, when PortAudio
+is absent, so a status check took `/voice/status` down with it on any Linux
+machine without `libportaudio2`.
+
+### What is verified, and how
+
+The models are real and fetched through the verifying downloader, with
+checksums taken from actual downloads rather than left empty: the three
+openWakeWord graphs and the Piper voice with its config. The CI **voice gate**
+installs the extra, downloads them, synthesises "hey jarvis" with Piper and
+asserts the detector fires on it — peak confidence 0.9987 against a 0.5
+threshold — and that an unrelated phrase scores 0.0000 and does not. A false
+wake matters as much as a missed one, so both directions are asserted.
+
+**What that does not establish:** that a real microphone in a real room hears
+*you*. The test speech is clean, synthesised, resampled to 16 kHz, with no
+background noise, no reverb and no distance from the microphone. It proves the
+models, the paths, the score key, the threshold and the state machine are
+correct. Whether it hears you is answered by using it.
+
+### It does not work in the packaged installer
+
+`jarvis-core.spec` excludes `onnxruntime` and `openwakeword`, and `sounddevice`
+is not in the base install, so the frozen core cannot run the wake word at all —
+it reports the package missing, correctly. Voice currently requires a source
+checkout with the `voice` extra installed.
+
+Bundling it is a deliberate decision rather than an oversight. The wake word
+alone would add ONNX Runtime and PortAudio for a feature that then wakes up and
+cannot understand you; the full loop also needs faster-whisper with CTranslate2
+plus a 74 MB model, and the Piper voice at 61 MB. That is roughly a quadrupling
+of a ~30 MB installer, which is the trade-off `jarvis-core.spec` already argues
+against for exactly these packages. It should be taken on its merits, with the
+sizes measured on Windows, and not as a side effect of making the wake word
+work.
+
+### Still missing for the whole loop
+
+Speech recognition needs `POST /voice/stt/prepare` to be called once, and that
+download is verified by `huggingface_hub` rather than by Jarvis — faster-whisper
+fetches its own weights and Jarvis never sees the file first.
+`jarvis/config/models.py` says so where the entry is defined. Playback of the
+synthesised reply is not implemented either: `speak` emits `voice.audio` events
+carrying the audio, and nothing in the shell plays them yet.
 
 **Verified on Linux (31 tests):** VAD onset, hangover, pre-roll, the
 brief-noise rejection and the maximum-length cap; sentence chunking; every

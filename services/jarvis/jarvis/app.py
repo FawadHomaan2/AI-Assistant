@@ -45,6 +45,7 @@ from jarvis.transport import routes
 from jarvis.transport.auth import AuthMiddleware
 from jarvis.util.errors import JarvisError
 from jarvis.util.logging import get_logger
+from jarvis.voice.capture import MicrophoneCapture
 from jarvis.voice.pipeline import VoicePipeline, VoiceSettings
 from jarvis.voice.stt import WhisperSpeechToText
 from jarvis.voice.tts import PiperTextToSpeech
@@ -75,6 +76,7 @@ class Context:
     registry: ToolRegistry
     executor: Executor
     voice: VoicePipeline
+    capture: MicrophoneCapture
     browser: BrowserSession
     memory: MemoryStore
     security: SecurityCenter
@@ -163,6 +165,12 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
             push_to_talk=settings.voice.push_to_talk,
         ),
     )
+    # Capture is built here too, and reports an absent microphone rather than
+    # failing to construct — the same reason the pipeline itself is always
+    # built. On this machine there is no audio device at all, and the interface
+    # needs to be able to say so.
+    capture = MicrophoneCapture(voice)
+
     orchestrator = Orchestrator(gateway, sessions, turns, audit, estop, executor, memory)
 
     return Context(
@@ -182,6 +190,7 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
         registry=registry,
         executor=executor,
         voice=voice,
+        capture=capture,
         browser=browser,
         memory=memory,
         security=security,

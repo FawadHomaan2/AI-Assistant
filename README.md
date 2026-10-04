@@ -186,6 +186,47 @@ Cloud providers additionally need `allow_cloud = true` and an API key, which is
 stored in the Windows Credential Manager by name. `config.toml` never holds a
 key, and pasting one into the `credential` field is rejected with an explanation.
 
+### Turning on the wake word
+
+Voice needs the `voice` extra, which is not installed by default and is not in
+the packaged build — see `docs/PHASES.md` for why.
+
+```bash
+cd services/jarvis
+.venv/Scripts/pip install -e ".[dev,secrets,voice]"   # macOS/Linux: .venv/bin/pip
+```
+
+On Linux also install PortAudio (`sudo apt install libportaudio2`); on Windows
+it comes with the Python package.
+
+Then, with Jarvis running:
+
+1. **Permissions → "Use the microphone"**, and turn it on. It is off by default
+   and the microphone button will not open it for you — a microphone that stays
+   open is the most invasive thing this program does, so the permission is given
+   once, deliberately, rather than as a side effect of pressing the button that
+   uses it.
+2. **Settings → Downloadable models**, and fetch the openWakeWord models
+   (about 4 MB, three files) and the Piper voice (about 62 MB) if you want
+   spoken replies. Each is verified against a recorded SHA-256.
+3. For speech recognition, `POST /voice/stt/prepare` once — about 74 MB. This is
+   the one download Jarvis does not checksum itself; faster-whisper fetches its
+   own weights through `huggingface_hub`, which verifies them against the Hub's
+   hashes.
+4. Press the microphone, and say **"Hey Jarvis"**.
+
+The button shows what the microphone is actually doing — waiting, recording,
+thinking, speaking — because every transition in the core goes through one
+method that emits the state. It cannot show "listening" while the core says
+otherwise. Press it again, use the tray, or hit the emergency stop to close the
+microphone; the emergency stop always closes it.
+
+What works today: the wake word fires, the pre-roll buffer keeps the first word
+of "Jarvis, open Chrome", and the utterance goes through the same orchestrator
+as a typed message — so a spoken request gets no more authority than a typed
+one, and every tool it proposes is gated identically. What does not: playing the
+spoken reply back, which needs audio output in the shell.
+
 ### UI only, in a browser
 ```bash
 npm run dev            # http://localhost:5183

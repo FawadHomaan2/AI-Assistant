@@ -73,6 +73,11 @@ class PiperTextToSpeech(TextToSpeech):
     def voice_path(self) -> Path:
         return paths.models_dir() / "piper" / f"{self.voice}.onnx"
 
+    @property
+    def config_path(self) -> Path:
+        """Piper's companion JSON, which it looks for at `<model>.onnx.json`."""
+        return self.voice_path.with_suffix(".onnx.json")
+
     def status(self) -> ComponentStatus:
         try:
             import piper  # noqa: F401
@@ -84,7 +89,7 @@ class PiperTextToSpeech(TextToSpeech):
                 model=self.voice,
                 download_mb=VOICE_MB,
             )
-        if not self.voice_path.exists():
+        if not self.voice_path.exists() or not self.config_path.exists():
             return ComponentStatus(
                 "text-to-speech",
                 False,
@@ -107,11 +112,33 @@ class PiperTextToSpeech(TextToSpeech):
 
         if not self.voice_path.exists():
             raise JarvisError(f"The {self.voice} voice has not been downloaded.")
+        if not self.config_path.exists():
+            # Piper needs the voice's JSON config beside the model. Without it
+            # the sample rate and phoneme map are unknown, and load() fails in a
+            # way that reads like a corrupt model rather than a missing file.
+            raise JarvisError(
+                f"The {self.voice} voice is missing its config file "
+                f"({self.config_path.name}). Download the voice again."
+            )
 
-        voice = PiperVoice.load(str(self.voice_path))
+        voice = PiperVoice.load(str(self.voice_path), config_path=str(self.config_path))
+
+        # Piper streams audio as chunks and we assemble the WAV ourselves. The
+        # older `synthesize(text, wav_file)` form was removed: from 1.3 the
+        # second positional argument is a synthesis config, so passing a wave
+        # file raised "Error # channels not specified" — which looked like a
+        # broken model rather than a changed signature.
+        frames = bytearray()
+        for chunk in voice.synthesize(text):
+            raw = getattr(chunk, "audio_int16_bytes", None)
+            frames += bytes(raw) if raw is not None else bytes(chunk.audio_int16_array)
+
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as wav:
-            voice.synthesize(text, wav)
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(voice.config.sample_rate)
+            wav.writeframes(bytes(frames))
         return buffer.getvalue()
 
 

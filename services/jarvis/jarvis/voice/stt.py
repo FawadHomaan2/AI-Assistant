@@ -48,6 +48,17 @@ class SpeechToText(abc.ABC):
     @abc.abstractmethod
     def transcribe(self, audio: bytes, fmt: AudioFormat) -> Transcript: ...
 
+    def prepare(self) -> ComponentStatus:
+        """Make this component ready, downloading if that is what it takes.
+
+        Separate from `transcribe` to break a deadlock. `status` reported the
+        model missing, the pipeline refused to start listening while anything
+        was missing, and the model was only ever downloaded by `transcribe` —
+        which could not run until listening had started. There was no way
+        through the interface to ever get the model.
+        """
+        return self.status()
+
 
 class WhisperSpeechToText(SpeechToText):
     """faster-whisper, running locally."""
@@ -116,6 +127,24 @@ class WhisperSpeechToText(SpeechToText):
             download_root=str(self.model_dir),
         )
         return self._model
+
+    def prepare(self) -> ComponentStatus:
+        """Download the weights by loading the model once.
+
+        Unlike every other model, this download is not checksummed by Jarvis:
+        faster-whisper resolves and fetches its own weights through
+        huggingface_hub, which verifies them against the hashes the Hub
+        publishes. Jarvis does not get to see the file first, so adding an entry
+        to the catalogue with a URL would mean two competing download paths.
+        `jarvis/config/models.py` says so where the entry is defined.
+        """
+        try:
+            import faster_whisper  # noqa: F401
+        except ImportError:
+            return self.status()
+        log.info("preparing speech model", model=self.model_name)
+        self._load()
+        return self.status()
 
     def transcribe(self, audio: bytes, fmt: AudioFormat) -> Transcript:
         import numpy as np

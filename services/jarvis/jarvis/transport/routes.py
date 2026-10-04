@@ -234,15 +234,106 @@ async def forget_approvals(request: Request) -> dict[str, object]:
 async def voice_status(request: Request) -> dict[str, object]:
     ctx = _ctx(request)
     status = ctx.voice.status()
+    mic_ok, mic_detail = ctx.capture.availability()
     return {
         **status.to_dict(),
         "state": ctx.voice.state.value,
         "reason": ctx.voice.unavailable_reason(),
+        # The microphone is reported separately from the models. "Voice is not
+        # ready" covers two very different problems — a missing download, which
+        # the interface can fix, and no audio device, which it cannot — and
+        # collapsing them sends people to the wrong place.
+        "microphone": {
+            "available": mic_ok,
+            "detail": mic_detail,
+            "listening": ctx.capture.running,
+            "framesSeen": ctx.capture.frames,
+            "framesDropped": ctx.capture.dropped,
+        },
+        "micScopeGranted": Scope.MIC_LISTEN in ctx.policy.grants.granted,
         "settings": {
             "enabled": ctx.settings.voice.enabled,
             "wakeWord": ctx.settings.voice.wake_word,
             "pushToTalk": ctx.settings.voice.push_to_talk,
         },
+    }
+
+
+@router.post("/voice/listen")
+async def voice_listen(request: Request) -> dict[str, object]:
+    """Open the microphone and start waiting for the wake word.
+
+    Refused unless `mic.listen` has been granted. A continuously open
+    microphone is the most invasive thing in this program, so it is not implied
+    by voice being configured, and it is never started at launch: the user asks
+    for it, once, and can see it is on.
+    """
+    ctx = _ctx(request)
+    if ctx.estop.engaged:
+        raise HTTPException(
+            status_code=409, detail="The emergency stop is engaged. Clear it first."
+        )
+    if Scope.MIC_LISTEN not in ctx.policy.grants.granted:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Listening needs the 'mic.listen' permission, which is not granted. "
+                "Grant it in Permissions first."
+            ),
+        )
+    try:
+        await ctx.capture.start()
+    except JarvisError as exc:
+        # A missing model or an absent microphone is a 503 with the reason
+        # already written for a person to read, not a stack trace.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Opening the microphone is logged like any other granted capability. The
+    # hash-chained log is how "was it listening at 3pm" has an answer.
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="voice.listen",
+            args_digest=AuditRepository.digest({"wakeWord": ctx.settings.voice.wake_word}),
+            risk="elevated",
+            decision="allowed",
+        )
+    )
+    return {"listening": True, "state": ctx.voice.state.value}
+
+
+@router.post("/voice/stt/prepare")
+async def voice_prepare_stt(request: Request) -> dict[str, object]:
+    """Download the speech recognition model, so listening can start.
+
+    Its own endpoint because of a deadlock: the pipeline refused to listen while
+    the model was missing, and the model was only downloaded on the first
+    transcription, which required listening. There was no route from a fresh
+    install to a working microphone.
+
+    The download is ~74 MB and runs in a thread, since loading the model blocks.
+    """
+    import asyncio
+
+    ctx = _ctx(request)
+    status = await asyncio.to_thread(ctx.voice.stt.prepare)
+    return {
+        **status.to_dict(),
+        "ready": ctx.voice.status().ready,
+        "reason": ctx.voice.unavailable_reason(),
+    }
+
+
+@router.post("/voice/stop")
+async def voice_stop(request: Request) -> dict[str, object]:
+    """Close the microphone. Always allowed, and always works."""
+    ctx = _ctx(request)
+    await ctx.capture.stop()
+    return {
+        "listening": False,
+        "state": ctx.voice.state.value,
+        "framesSeen": ctx.capture.frames,
+        "framesDropped": ctx.capture.dropped,
     }
 
 
@@ -533,7 +624,10 @@ async def emergency_stop(request: Request) -> dict[str, object]:
     ctx.estop.engage("requested via API")
     # Anything waiting on a confirmation is declined, so no action stays armed.
     cancelled = ctx.consent.cancel_all("emergency stop")
-    return {"engaged": True, "cancelledPrompts": cancelled}
+    # And the microphone closes. An emergency stop that leaves it open has not
+    # stopped the thing most people press it for.
+    await ctx.capture.stop()
+    return {"engaged": True, "cancelledPrompts": cancelled, "microphoneClosed": True}
 
 
 @router.delete("/emergency-stop")
@@ -579,6 +673,47 @@ async def websocket(ws: WebSocket) -> None:
 
     ctx.consent.set_prompt(show_consent)
 
+    async def send_voice_event(event: object) -> None:
+        """Forward a pipeline event — state changes, wake, transcript."""
+        await ws.send_json(
+            {"type": event.type, **event.data}  # type: ignore[attr-defined]
+        )
+
+    async def run_voice_turn(transcript: object) -> None:
+        """A finished utterance becomes a turn, and the answer is spoken.
+
+        This is the join between voice and the agent, and it deliberately goes
+        through the same orchestrator as a typed message: the model gets no
+        extra authority for having been spoken to, and every tool call it
+        proposes is gated exactly as it would be from the keyboard.
+        """
+        text = str(transcript.text).strip()  # type: ignore[attr-defined]
+        if not text:
+            return
+        session_id = voice_session["id"] or ctx.sessions.create(mode=ctx.settings.mode).id
+        voice_session["id"] = session_id
+
+        reply: list[str] = []
+        try:
+            async for event in ctx.orchestrator.handle(session_id, text):
+                payload = event.to_json()
+                payload["session_id"] = session_id
+                payload["viaVoice"] = True
+                await ws.send_json(payload)
+                if payload["type"] == "delta":
+                    reply.append(str(payload.get("text", "")))
+        except JarvisError as exc:
+            await ws.send_json({"type": "error", **exc.to_dict()})
+            return
+
+        # Speak the answer, then go back to waiting for the wake word. The
+        # pipeline handles that transition and the barge-in while it talks.
+        await ctx.voice.speak("".join(reply))
+
+    voice_session: dict[str, str] = {"id": ""}
+    ctx.voice.set_event_sink(send_voice_event)
+    ctx.capture.set_transcript_handler(run_voice_turn)
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -604,6 +739,29 @@ async def websocket(ws: WebSocket) -> None:
                 )
                 if not delivered:
                     log.warning("consent answer had nothing waiting", consent_id=msg.get("id"))
+                continue
+            if kind == "voice.start":
+                # Over the socket as well as over REST, because this is the
+                # connection the resulting events have to come back on.
+                if Scope.MIC_LISTEN not in ctx.policy.grants.granted:
+                    await ws.send_json(
+                        {
+                            "type": "error",
+                            "code": "jarvis.permission.denied",
+                            "message": (
+                                "Listening needs the 'mic.listen' permission, which is "
+                                "not granted. Grant it in Permissions first."
+                            ),
+                        }
+                    )
+                    continue
+                try:
+                    await ctx.capture.start()
+                except JarvisError as exc:
+                    await ws.send_json({"type": "error", **exc.to_dict()})
+                continue
+            if kind == "voice.stop":
+                await ctx.capture.stop()
                 continue
             if kind != "chat":
                 await ws.send_json(
@@ -638,3 +796,10 @@ async def websocket(ws: WebSocket) -> None:
                 )
     except WebSocketDisconnect:
         log.info("websocket disconnected")
+    finally:
+        # The microphone does not outlive the interface that opened it, and a
+        # sink pointing at a closed socket would raise inside the pipeline's
+        # state machine the next time anything changed.
+        ctx.voice.set_event_sink(None)
+        ctx.capture.set_transcript_handler(None)
+        await ctx.capture.stop()

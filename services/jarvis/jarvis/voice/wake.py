@@ -4,8 +4,16 @@ openWakeWord ships a pretrained `hey_jarvis` model — which is why the assistan
 is called Jarvis. No training data to collect, no custom model to build, and the
 accuracy comes from a model trained on far more speakers than we could gather.
 
-Detection is a ~15 MB ONNX graph running locally on a ring buffer. The
-microphone is never streamed to a server to listen for a wake word.
+Detection is three small ONNX graphs running locally: audio becomes a
+mel-spectrogram, the spectrogram becomes a speech embedding, and the embedding
+is scored for "hey jarvis". Together they are about 3.5 MB. The microphone is
+never streamed to a server to listen for a wake word.
+
+All three are loaded from Jarvis's own models directory by explicit path, not
+by name. openWakeWord resolves a bare name against its own package resources,
+which in a PyInstaller one-file build is a temporary extraction directory that
+does not survive — and which the verifying downloader in `jarvis.config.models`
+never writes to anyway.
 """
 
 from __future__ import annotations
@@ -13,6 +21,7 @@ from __future__ import annotations
 import abc
 import contextlib
 from pathlib import Path
+from typing import Any
 
 from jarvis.config import paths
 from jarvis.util.errors import JarvisError
@@ -22,7 +31,19 @@ from jarvis.voice.types import ComponentStatus, WakeDetection
 log = get_logger(__name__)
 
 DEFAULT_WAKE_WORD = "hey_jarvis"
-WAKE_MODEL_MB = 15
+
+#: The three files together, rounded up. Reported to the user before any
+#: download, so it is the real figure rather than a guess.
+WAKE_MODEL_MB = 4
+
+#: Catalogue keys in `jarvis.config.models` that the detector needs on disk.
+#: Asking for the first fetches all three, because it declares the other two as
+#: requirements.
+MODEL_KEYS = (
+    "openwakeword-hey-jarvis",
+    "openwakeword-melspectrogram",
+    "openwakeword-embedding",
+)
 
 #: Pretrained models openWakeWord provides. Anything else needs training.
 BUILT_IN = ("hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy")
@@ -49,6 +70,7 @@ class OpenWakeWordDetector(WakeWordDetector):
         self.word = word
         self.threshold = threshold
         self._model: object | None = None
+        self._score_key = ""
         self._elapsed = 0.0
 
     @property
@@ -75,11 +97,14 @@ class OpenWakeWordDetector(WakeWordDetector):
                 f"({', '.join(BUILT_IN)}). A custom wake word needs a trained model.",
                 model=self.word,
             )
-        if not self.model_dir.exists() or not any(self.model_dir.glob("*.onnx")):
+        missing = [spec.name for spec in self._specs() if not spec.installed()]
+        if missing:
+            # Name what is missing. "The model has not been downloaded" when two
+            # of three files are present sends you looking in the wrong place.
             return ComponentStatus(
                 "wake-word",
                 False,
-                f"The {self.word} model has not been downloaded yet ({WAKE_MODEL_MB} MB).",
+                f"Not downloaded yet ({WAKE_MODEL_MB} MB): {', '.join(missing)}.",
                 model=self.word,
                 download_mb=WAKE_MODEL_MB,
             )
@@ -90,6 +115,12 @@ class OpenWakeWordDetector(WakeWordDetector):
             model=self.word,
         )
 
+    @staticmethod
+    def _specs() -> list[Any]:
+        from jarvis.config import models
+
+        return [models.BY_KEY[key] for key in MODEL_KEYS]
+
     def _load(self) -> object:
         if self._model is not None:
             return self._model
@@ -97,7 +128,28 @@ class OpenWakeWordDetector(WakeWordDetector):
             from openwakeword.model import Model
         except ImportError as exc:
             raise JarvisError("Wake-word detection needs the 'voice' extra.") from exc
-        self._model = Model(wakeword_models=[self.word], inference_framework="onnx")
+
+        wake, melspec, embedding = (spec.path() for spec in self._specs())
+        for path in (wake, melspec, embedding):
+            if not path.is_file():
+                raise JarvisError(
+                    f"The wake word needs {path.name}, which is not downloaded. "
+                    f"Download it from Settings, or use push-to-talk."
+                )
+
+        self._model = Model(
+            wakeword_models=[str(wake)],
+            inference_framework="onnx",
+            melspec_model_path=str(melspec),
+            embedding_model_path=str(embedding),
+        )
+        # Loading by path makes openWakeWord key its scores by the file's stem
+        # ("hey_jarvis_v0.1"), not by the wake word ("hey_jarvis"). Reading the
+        # key off the loaded model is what stops `push` from looking up a name
+        # that is never there and so never detecting anything.
+        keys = getattr(self._model, "models", None) or [wake.stem]
+        self._score_key = next(iter(keys), wake.stem)
+        log.info("wake word model loaded", score_key=self._score_key)
         return self._model
 
     def push(self, frame: bytes) -> WakeDetection | None:
@@ -107,7 +159,7 @@ class OpenWakeWordDetector(WakeWordDetector):
         samples = np.frombuffer(frame, dtype=np.int16)
         scores = model.predict(samples)  # type: ignore[attr-defined]
         self._elapsed += len(samples) / 16_000
-        score = float(scores.get(self.word, 0.0))
+        score = float(scores.get(self._score_key, 0.0))
         if score >= self.threshold:
             log.info("wake word detected", word=self.word, confidence=round(score, 3))
             self.reset()

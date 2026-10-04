@@ -6,7 +6,8 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
-from jarvis.config import models, secrets
+from jarvis.config import models, secrets, writer
+from jarvis.config.settings import PRESETS
 from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer
 from jarvis.governance.risk import MODE_AUTO_CEILING
@@ -62,6 +63,289 @@ async def providers(request: Request) -> list[ProviderOut]:
 async def provider_health(request: Request) -> dict[str, dict[str, object]]:
     results = await _ctx(request).gateway.health()
     return {name: {"ok": ok, "detail": detail} for name, (ok, detail) in results.items()}
+
+
+async def _apply(ctx, new_settings) -> None:  # type: ignore[no-untyped-def]
+    """Adopt a changed configuration without a restart.
+
+    Both halves matter. Replacing `ctx.settings` is what later requests read;
+    reloading the gateway is what drops providers already built, each of which
+    captured its API key when its HTTP client was created. Without the second,
+    a key stored a moment ago would not be used until the next launch.
+    """
+    ctx.settings = new_settings
+    await ctx.gateway.reload(new_settings)
+
+
+@router.get("/providers/presets")
+async def provider_presets() -> dict[str, object]:
+    """The services the Settings panel can set up, and where to get a key.
+
+    Served from the core so adding one is a single entry in
+    `jarvis.config.settings.PRESETS` rather than an edit in three places.
+    """
+    return {
+        "presets": [{**preset.model_dump(), "needs_key": preset.needs_key} for preset in PRESETS]
+    }
+
+
+@router.post("/providers")
+async def add_provider(request: Request) -> dict[str, object]:
+    """Add or replace a provider, optionally storing its key in one step.
+
+    This is the endpoint that made the cloud models reachable at all: the
+    shipped `config.toml` has them commented out, so before this a fresh
+    install listed `dev_echo` and the adapters' "add a key in Settings" pointed
+    at a control that did not exist.
+    """
+    ctx = _ctx(request)
+    body = await request.json() if await request.body() else {}
+
+    name = str(body.get("name") or "").strip()
+    kind = str(body.get("kind") or "").strip()
+    if not kind:
+        raise HTTPException(status_code=422, detail="A provider needs a `kind`.")
+
+    key = body.get("key")
+    credential = str(body.get("credential") or "").strip()
+    if key and not credential:
+        raise HTTPException(
+            status_code=422,
+            detail="A key was supplied with no `credential` name to store it under.",
+        )
+
+    try:
+        updated = writer.set_provider(
+            name,
+            kind=kind,
+            model=str(body.get("model") or "").strip(),
+            base_url=str(body.get("base_url") or "").strip(),
+            credential=credential,
+        )
+    except JarvisError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+
+    # The config is written first on purpose. Storing the key against a
+    # provider that then fails to validate would leave a secret in the keychain
+    # for something that does not exist.
+    if key:
+        _store_key(ctx, credential, str(key), provider=name)
+
+    await _apply(ctx, updated)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="provider.add",
+            args_digest=AuditRepository.digest(
+                {"name": name, "kind": kind, "key_supplied": bool(key)}
+            ),
+            decision="allowed",
+        )
+    )
+    log.info("provider configured", provider=name, kind=kind, key_supplied=bool(key))
+    return {"providers": [ProviderOut(**vars(c)).model_dump() for c in ctx.gateway.capabilities()]}
+
+
+@router.delete("/providers/{name}")
+async def remove_provider(
+    request: Request, name: str, forget_key: bool = True
+) -> dict[str, object]:
+    """Remove a provider, and by default its stored key with it."""
+    ctx = _ctx(request)
+    _, existing = _provider_or_404(ctx, name)
+    credential = existing.credential
+
+    try:
+        updated = writer.remove_provider(name)
+    except JarvisError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+
+    forgotten = False
+    if forget_key and credential:
+        # Best effort: a provider removed while the keychain is unavailable
+        # should still be removed. The alternative leaves the config entry in
+        # place because of a secret nobody can reach.
+        try:
+            forgotten = secrets.delete(credential)
+        except JarvisError as exc:
+            log.warning("could not remove stored key", provider=name, detail=exc.message)
+
+    await _apply(ctx, updated)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="provider.remove",
+            args_digest=AuditRepository.digest({"name": name, "key_removed": forgotten}),
+            decision="allowed",
+        )
+    )
+    log.info("provider removed", provider=name, key_removed=forgotten)
+    return {
+        "removed": True,
+        "key_removed": forgotten,
+        "default": updated.ai.default,
+        "providers": [ProviderOut(**vars(c)).model_dump() for c in ctx.gateway.capabilities()],
+    }
+
+
+@router.put("/providers/{name}/credential")
+async def set_provider_credential(request: Request, name: str) -> dict[str, object]:
+    """Store an API key for a configured provider.
+
+    The key goes to the OS credential store and nowhere else: not to
+    `config.toml`, not to the audit log, not to the response, and not to any
+    log line. Settings can report "configured" afterwards but can never read it
+    back.
+    """
+    ctx = _ctx(request)
+    _, existing = _provider_or_404(ctx, name)
+    if not existing.credential:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Provider {name!r} has no credential name, so there is nowhere to "
+                "store a key. Set one first, or use a provider that needs no key."
+            ),
+        )
+
+    body = await request.json() if await request.body() else {}
+    key = str(body.get("key") or "")
+    _store_key(ctx, existing.credential, key, provider=name)
+
+    # Reloaded so the next request builds a client carrying the new key.
+    await _apply(ctx, ctx.settings)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="provider.credential.set",
+            args_digest=AuditRepository.digest({"provider": name, "entry": existing.credential}),
+            decision="allowed",
+        )
+    )
+    return {"configured": True, "provider": name}
+
+
+@router.delete("/providers/{name}/credential")
+async def clear_provider_credential(request: Request, name: str) -> dict[str, object]:
+    ctx = _ctx(request)
+    _, existing = _provider_or_404(ctx, name)
+    if not existing.credential:
+        return {"configured": False, "provider": name, "removed": False}
+
+    try:
+        removed = secrets.delete(existing.credential)
+    except JarvisError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+
+    await _apply(ctx, ctx.settings)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="provider.credential.clear",
+            args_digest=AuditRepository.digest({"provider": name}),
+            decision="allowed",
+        )
+    )
+    return {"configured": False, "provider": name, "removed": removed}
+
+
+@router.get("/ai")
+async def ai_settings(request: Request) -> dict[str, object]:
+    """Which provider is in use, and whether cloud models may be used at all.
+
+    Separate from `/health`, which reports the default provider but not the two
+    cloud flags — the panel needs both to render a switch that is not lying
+    about its own position.
+    """
+    ctx = _ctx(request)
+    store = secrets.status()
+    return {
+        "default": ctx.settings.ai.default,
+        "allow_cloud": ctx.settings.ai.allow_cloud,
+        "allow_cloud_content": ctx.settings.ai.allow_cloud_content,
+        "credential_store": {
+            "available": store.available,
+            "backend": store.backend,
+            "detail": store.detail,
+        },
+    }
+
+
+@router.post("/ai")
+async def set_ai_settings(request: Request) -> dict[str, object]:
+    """Choose the provider in use, and whether cloud models may be used at all.
+
+    `allow_cloud` is a separate decision from configuring a provider, and stays
+    that way: a key stored for a rainy day must not start sending conversations
+    off the machine on its own.
+    """
+    ctx = _ctx(request)
+    body = await request.json() if await request.body() else {}
+
+    def flag(field: str) -> bool | None:
+        return None if body.get(field) is None else bool(body[field])
+
+    default = body.get("default")
+    try:
+        updated = writer.set_ai(
+            default=str(default).strip() if default is not None else None,
+            allow_cloud=flag("allow_cloud"),
+            allow_cloud_content=flag("allow_cloud_content"),
+        )
+    except JarvisError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+
+    await _apply(ctx, updated)
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="ai.settings",
+            args_digest=AuditRepository.digest(
+                {
+                    "default": updated.ai.default,
+                    "allow_cloud": updated.ai.allow_cloud,
+                    "allow_cloud_content": updated.ai.allow_cloud_content,
+                }
+            ),
+            decision="allowed",
+        )
+    )
+    log.info(
+        "ai settings changed",
+        default=updated.ai.default,
+        allow_cloud=updated.ai.allow_cloud,
+        allow_cloud_content=updated.ai.allow_cloud_content,
+    )
+    return {
+        "default": updated.ai.default,
+        "allow_cloud": updated.ai.allow_cloud,
+        "allow_cloud_content": updated.ai.allow_cloud_content,
+    }
+
+
+def _provider_or_404(ctx, name: str):  # type: ignore[no-untyped-def]
+    """Resolve a configured provider, or 404 naming what is configured."""
+    try:
+        return ctx.settings.provider(name)
+    except JarvisError as exc:
+        raise HTTPException(status_code=404, detail=exc.message) from exc
+
+
+def _store_key(ctx, entry: str, key: str, *, provider: str) -> None:  # type: ignore[no-untyped-def]
+    """Put a key in the OS credential store, or explain why it could not.
+
+    Whitespace is stripped because a key pasted from a browser usually carries
+    a trailing newline, and a newline in an HTTP header is rejected by the
+    client with an error that says nothing about the key.
+    """
+    cleaned = key.strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="The key is empty.")
+    try:
+        secrets.set_secret(entry, cleaned)
+    except JarvisError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+    log.info("api key stored", provider=provider, entry=entry)
 
 
 @router.post("/sessions", response_model=SessionOut)

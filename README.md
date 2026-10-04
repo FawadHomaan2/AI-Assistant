@@ -170,8 +170,19 @@ message back and is explicitly *not* a language model. The UI says so, because a
 provider that fabricated plausible answers would make the system look like it
 worked when it did not.
 
-For real answers, edit `config.toml` in the Jarvis data folder
-(`%LOCALAPPDATA%\Jarvis` on Windows) — the easiest local option:
+For real answers, use **Settings → AI models**. Pick a service from the list,
+paste a key if it needs one, press Add, and switch to it — no restart, and no
+editing files. The list is served by the core, so it is the same set of services
+the adapters actually support rather than a second list that drifts.
+
+Cloud services need one more deliberate step: **Allow cloud models**, a separate
+switch. A stored key is not consent, so a key kept for later does not start
+sending conversations off the machine on its own. Allowing document and screen
+*content* to reach a cloud model is a third switch again.
+
+Editing `config.toml` in the Jarvis data folder (`%LOCALAPPDATA%\Jarvis` on
+Windows) still works and is equivalent — the panel writes the same file, keeping
+its comments:
 
 ```toml
 [ai]
@@ -182,14 +193,17 @@ kind = "ollama"
 model = "qwen2.5:14b-instruct"
 ```
 
-Cloud providers additionally need `allow_cloud = true` and an API key, which is
-stored in the Windows Credential Manager by name. `config.toml` never holds a
-key, and pasting one into the `credential` field is rejected with an explanation.
+API keys are never in that file. They go to the Windows Credential Manager under
+the name in `credential`, and pasting a key into that field instead of a name is
+rejected with an explanation. The panel never reads a key back — it reports
+"Ready", not a value.
 
 ### Connecting Claude, ChatGPT, Gemini and the rest
 
-Four adapters cover them. `config.toml` ships every block below commented out —
-uncomment one, set `default` to its name, and set `allow_cloud = true`.
+Four adapters cover them, and **Settings → AI models** offers each one by name.
+The table below is the same set for anyone configuring it by hand: `config.toml`
+ships every block commented out — uncomment one, set `default` to its name, and
+set `allow_cloud = true`.
 
 | Service | `kind` | Notes |
 |---|---|---|

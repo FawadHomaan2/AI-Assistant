@@ -146,6 +146,17 @@ class Gateway:
                 results[item] = (False, exc.message)
         return results
 
+    async def reload(self, settings: Settings) -> None:
+        """Adopt changed settings, dropping every built provider.
+
+        The cache has to go, not just the settings: a provider is constructed
+        once and bakes its API key into an httpx client's headers, so a key
+        stored a moment ago would not be used until the next launch. Clearing
+        the cache is what makes "paste a key, press Test" work.
+        """
+        await self.aclose()
+        self.settings = settings
+
     async def aclose(self) -> None:
         for provider in self._cache.values():
             await provider.aclose()

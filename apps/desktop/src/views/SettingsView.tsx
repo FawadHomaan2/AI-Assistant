@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Unavailable } from '@/types';
 import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
+import { AiProviders } from '@/components/AiProviders';
 import { useStore, CURRENT_PHASE } from '@/state/store';
 import {
   checkForUpdate,
@@ -22,8 +23,6 @@ import {
 } from '@/lib/api';
 import './views.css';
 
-type Provider = 'local' | 'cloud' | 'custom';
-
 /** The union has three shapes and only one carries a message. */
 function why(reason: Unavailable, fallback: string): string {
   if (reason.kind === 'error') return reason.message;
@@ -31,14 +30,7 @@ function why(reason: Unavailable, fallback: string): string {
   return fallback;
 }
 
-const PROVIDERS: { id: Provider; label: string; detail: string }[] = [
-  { id: 'local', label: 'Local model', detail: 'llama.cpp (GGUF) or Ollama on this machine. Nothing leaves the computer.' },
-  { id: 'cloud', label: 'Cloud API', detail: 'Anthropic or OpenAI. Stronger planning; prompts leave the machine.' },
-  { id: 'custom', label: 'Custom OpenAI-compatible endpoint', detail: 'LM Studio, vLLM, OpenRouter, Azure, or any OpenAI-shaped base URL.' },
-];
-
 export function SettingsView() {
-  const [provider, setProvider] = useState<Provider>('local');
   const [shortcut, setShortcut] = useState('Ctrl+Space');
   const [shortcutNote, setShortcutNote] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -153,45 +145,8 @@ export function SettingsView() {
         hard-coded.
       </Explainer>
 
-      <Card title="AI provider">
-        <div className="radios">
-          {PROVIDERS.map((p) => (
-            <label key={p.id} className={`radio${provider === p.id ? ' is-on' : ''}`}>
-              <input
-                type="radio"
-                name="provider"
-                value={p.id}
-                checked={provider === p.id}
-                onChange={() => setProvider(p.id)}
-              />
-              <span className="radio__body">
-                <strong>{p.label}</strong>
-                <small>{p.detail}</small>
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="field">
-          <label htmlFor="api-key">
-            {provider === 'local' ? 'Model path or Ollama tag' : 'API key'}
-          </label>
-          <input
-            id="api-key"
-            type={provider === 'local' ? 'text' : 'password'}
-            placeholder={
-              provider === 'local'
-                ? 'C:\\Users\\you\\models\\qwen2.5-14b-instruct-q4.gguf'
-                : 'Stored in Windows Credential Manager'
-            }
-            autoComplete="off"
-            disabled
-          />
-        </div>
-        <p className="card__note">
-          Editing providers from this page is not wired up yet — for now, edit{' '}
-          <code>config.toml</code> in the Jarvis data folder and restart. Keys go to
-          the Windows Credential Manager by name; the file never holds one.
-        </p>
+      <Card title="AI models">
+        <AiProviders />
       </Card>
 
       <Card title="Updates">

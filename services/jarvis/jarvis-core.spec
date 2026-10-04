@@ -54,6 +54,24 @@ if sys.platform == "win32":
     # them, so the scan does not see them at all.
     hidden += ["win32api", "win32con", "win32gui", "win32process", "winreg"]
 
+# `keyring` finds its backends through entry points, so nothing imports
+# `keyring.backends.Windows` by name and a static scan bundles the package
+# without the one backend that works. The result is an installed app whose
+# credential store reports itself unavailable — which is where API keys for
+# Claude, ChatGPT and Gemini have nowhere to go. `scripts/build_core.py` asks
+# the frozen binary about this rather than trusting the list below.
+hidden += [
+    "keyring.backends.fail",
+    "keyring.backends.null",
+    "keyring.backends.chainer",
+]
+if sys.platform == "win32":
+    hidden += [
+        "keyring.backends.Windows",
+        "win32ctypes.core",
+        "win32ctypes.pywin32.win32cred",
+    ]
+
 # Heavy optional extras. Each has a runtime check that explains what is missing
 # and what to install, so excluding them degrades a feature rather than
 # crashing the core.

@@ -33,11 +33,15 @@ on:
   push:
     tags:
       - 'v*'
-  # Lets a failed publish be retried without moving the tag.
+  # Two jobs in one: retrying a failed publish without moving the tag, and
+  # publishing a tag that does not exist yet. The second matters because
+  # creating a tag needs push access to the repository, while running this
+  # workflow needs only the ability to start it — the release step creates the
+  # tag at the dispatched commit using the workflow's own token.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to build and publish'
+        description: 'Tag to publish (created at this ref if it does not exist)'
         required: true
 
 permissions:
@@ -53,7 +57,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          # Not the `tag` input: on a dispatch that tag may not exist yet, and
+          # checking it out would fail before anything is built. `github.ref` is
+          # the tag on a tag push and the dispatched branch otherwise — the
+          # commit to build, either way.
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v4
         with:

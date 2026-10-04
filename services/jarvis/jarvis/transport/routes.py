@@ -543,14 +543,73 @@ async def voice_status(request: Request) -> dict[str, object]:
     }
 
 
+@router.post("/voice/settings")
+async def set_voice_settings(request: Request) -> dict[str, object]:
+    """Change `[voice]`, including whether to listen from launch.
+
+    `enabled` is what makes the wake word behave like a wake word: on, Jarvis
+    listens from the moment it starts, with no button to press each time. It is
+    off by default and it is not sufficient on its own — `mic.listen` is still
+    required, so turning this on cannot open a microphone the user has not
+    granted.
+    """
+    ctx = _ctx(request)
+    body = await request.json() if await request.body() else {}
+
+    def flag(field: str) -> bool | None:
+        return None if body.get(field) is None else bool(body[field])
+
+    wake_word = body.get("wake_word")
+    try:
+        updated = writer.set_voice(
+            enabled=flag("enabled"),
+            wake_word=str(wake_word).strip() if wake_word is not None else None,
+            push_to_talk=flag("push_to_talk"),
+        )
+    except JarvisError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+
+    ctx.settings = updated
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="voice.settings",
+            args_digest=AuditRepository.digest(
+                {
+                    "enabled": updated.voice.enabled,
+                    "wakeWord": updated.voice.wake_word,
+                    "pushToTalk": updated.voice.push_to_talk,
+                }
+            ),
+            decision="allowed",
+        )
+    )
+
+    # Said plainly rather than left for someone to discover: the setting is on,
+    # the permission is not, and nothing will happen next launch.
+    needs_permission = updated.voice.enabled and Scope.MIC_LISTEN not in (ctx.policy.grants.granted)
+    return {
+        "enabled": updated.voice.enabled,
+        "wakeWord": updated.voice.wake_word,
+        "pushToTalk": updated.voice.push_to_talk,
+        "needsMicPermission": needs_permission,
+        "listening": ctx.capture.running,
+    }
+
+
 @router.post("/voice/listen")
 async def voice_listen(request: Request) -> dict[str, object]:
     """Open the microphone and start waiting for the wake word.
 
-    Refused unless `mic.listen` has been granted. A continuously open
-    microphone is the most invasive thing in this program, so it is not implied
-    by voice being configured, and it is never started at launch: the user asks
-    for it, once, and can see it is on.
+    Refused unless `mic.listen` has been granted. A continuously open microphone
+    is the most invasive thing in this program, so it is not implied by voice
+    being configured.
+
+    It *can* now start at launch, which this docstring used to rule out. The
+    principle it was protecting — the user asks for it once, deliberately, and
+    can see it is on — is unchanged: `[voice] enabled` is that one deliberate
+    ask, and `jarvis.app.start_listening_if_asked` still requires the
+    permission as well. Launching is not the ask; turning the setting on is.
     """
     ctx = _ctx(request)
     if ctx.estop.engaged:

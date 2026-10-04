@@ -3,6 +3,7 @@ import type { Unavailable } from '@/types';
 import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AiProviders } from '@/components/AiProviders';
+import { VoiceSettings } from '@/components/VoiceSettings';
 import { useStore, CURRENT_PHASE } from '@/state/store';
 import {
   checkForUpdate,
@@ -147,6 +148,10 @@ export function SettingsView() {
 
       <Card title="AI models">
         <AiProviders />
+      </Card>
+
+      <Card title="Voice">
+        <VoiceSettings />
       </Card>
 
       <Card title="Updates">

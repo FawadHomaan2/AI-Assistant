@@ -206,6 +206,10 @@ class LoggingSettings(BaseModel):
 
 
 class VoiceSettings(BaseModel):
+    #: Listen for the wake word from launch, rather than waiting for the
+    #: microphone button every session. Acted on by
+    #: `jarvis.app.start_listening_if_asked`, which also requires the
+    #: `mic.listen` permission — this flag alone cannot open a microphone.
     enabled: bool = False
     wake_word: str = "hey_jarvis"
     push_to_talk: bool = True
@@ -389,6 +393,13 @@ kind = "dev_echo"
 # credential = "jarvis/local"             # omit if the endpoint needs no key
 
 [voice]
+# Listen for the wake word from the moment Jarvis starts, with no button to
+# press each session. This is the one setting that lets the microphone open on
+# its own, so it is off until you say otherwise — and it is not enough by
+# itself: the 'mic.listen' permission is required too, so turning this on
+# cannot start recording on a machine where that was never granted.
+#
+# Settings -> Voice is the same switch.
 enabled = false
 wake_word = "hey_jarvis"
 

@@ -205,6 +205,38 @@ def remove_provider(name: str, path: Path | None = None) -> Settings:
     return _save(config, doc)
 
 
+def set_voice(
+    *,
+    enabled: bool | None = None,
+    wake_word: str | None = None,
+    push_to_talk: bool | None = None,
+    path: Path | None = None,
+) -> Settings:
+    """Change `[voice]`.
+
+    `enabled` means "listen for the wake word from the moment Jarvis starts".
+    It used to mean nothing at all — it was read from this file, passed into
+    the pipeline and reported over the API, and no code ever acted on it, so
+    the wake word had to be started by hand on every launch.
+    """
+    config = paths.config_file() if path is None else path
+    doc = _document(config)
+
+    if "voice" not in doc:
+        doc["voice"] = tomlkit.table()
+    voice = doc["voice"]
+
+    if enabled is not None:
+        voice["enabled"] = enabled
+    if wake_word is not None:
+        check_name(wake_word)
+        voice["wake_word"] = wake_word
+    if push_to_talk is not None:
+        voice["push_to_talk"] = push_to_talk
+
+    return _save(config, doc)
+
+
 def set_ai(
     *,
     default: str | None = None,

@@ -291,7 +291,21 @@ Either way, with Jarvis running:
    the one download Jarvis does not checksum itself; faster-whisper fetches its
    own weights through `huggingface_hub`, which verifies them against the Hub's
    hashes.
-4. Press the microphone, and say **"Hey Jarvis"**.
+4. **Settings → Voice**, and turn on *Listen for "Hey Jarvis" at startup* if you
+   want it to behave like a wake word should — live from the moment Jarvis
+   starts, with no button to press each session. Off, step 5 is needed every
+   time.
+5. Press the microphone (or just say **"Hey Jarvis"**, if you did step 4).
+
+All three of the setting, the permission and the models have to be in place
+before Jarvis listens on its own. With any of them missing it starts without
+listening and says which, rather than failing to start — refusing to launch over
+an unavailable microphone would be the worse bargain.
+
+`[voice] enabled` was dead configuration until now: it was read from
+`config.toml`, passed into the pipeline, reported over the API, and acted on by
+nothing. Setting it did nothing at all, which is why the wake word had to be
+started by hand on every launch.
 
 The button shows what the microphone is actually doing — waiting, recording,
 thinking, speaking — because every transition in the core goes through one

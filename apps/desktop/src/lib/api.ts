@@ -307,6 +307,8 @@ export interface VoiceStatus {
   missing: string[];
   microphone: VoiceMicrophone;
   micScopeGranted: boolean;
+  /** `[voice]` from config.toml. `enabled` means "listen from launch". */
+  settings: { enabled: boolean; wakeWord: string; pushToTalk: boolean };
 }
 
 export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
@@ -321,6 +323,11 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
       reason: String(raw.reason ?? ''),
       missing: (raw.missing as string[]) ?? [],
       micScopeGranted: Boolean(raw.micScopeGranted),
+      settings: {
+        enabled: Boolean((raw.settings as Record<string, unknown>)?.enabled),
+        wakeWord: String((raw.settings as Record<string, unknown>)?.wakeWord ?? 'hey_jarvis'),
+        pushToTalk: Boolean((raw.settings as Record<string, unknown>)?.pushToTalk),
+      },
       microphone: {
         available: Boolean((raw.microphone as Record<string, unknown>)?.available),
         detail: String((raw.microphone as Record<string, unknown>)?.detail ?? ''),
@@ -335,6 +342,48 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
         model: String(c.model ?? ''),
         downloadMb: Number(c.downloadMb ?? 0),
       })),
+    },
+  };
+}
+
+export interface VoiceSettingsReply {
+  enabled: boolean;
+  wakeWord: string;
+  pushToTalk: boolean;
+  needsMicPermission: boolean;
+  listening: boolean;
+}
+
+/**
+ * Change the voice settings, including listening from launch.
+ *
+ * `enabled` is what makes the wake word behave like one: on, Jarvis listens
+ * from the moment it starts rather than waiting for a button every session. It
+ * is not sufficient on its own — `mic.listen` is still required — and the reply
+ * says so through `needsMicPermission`.
+ */
+export async function setVoiceSettings(next: {
+  enabled?: boolean;
+  wakeWord?: string;
+  pushToTalk?: boolean;
+}): Promise<ApiResult<VoiceSettingsReply>> {
+  const res = await request<Record<string, unknown>>('/voice/settings', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...(next.enabled === undefined ? {} : { enabled: next.enabled }),
+      ...(next.wakeWord === undefined ? {} : { wake_word: next.wakeWord }),
+      ...(next.pushToTalk === undefined ? {} : { push_to_talk: next.pushToTalk }),
+    }),
+  });
+  if (!res.ok) return res;
+  return {
+    ok: true,
+    value: {
+      enabled: Boolean(res.value.enabled),
+      wakeWord: String(res.value.wakeWord ?? ''),
+      pushToTalk: Boolean(res.value.pushToTalk),
+      needsMicPermission: Boolean(res.value.needsMicPermission),
+      listening: Boolean(res.value.listening),
     },
   };
 }

@@ -101,6 +101,7 @@ describe('starting and stopping', () => {
         components: [],
         missing: [],
         micScopeGranted: true,
+        settings: { enabled: false, wakeWord: 'hey_jarvis', pushToTalk: true },
         microphone: { available: true, detail: '', listening: false, framesSeen: 0, framesDropped: 0 },
       },
     });

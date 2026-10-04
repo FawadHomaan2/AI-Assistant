@@ -15,12 +15,18 @@ from jarvis.browser.session import BrowserSession, BrowserSettings
 from jarvis.config import paths
 from jarvis.config.settings import Settings
 from jarvis.db.engine import Database
-from jarvis.db.repositories import AuditRepository, SessionRepository, TurnRepository
+from jarvis.db.repositories import (
+    AuditEntry,
+    AuditRepository,
+    SessionRepository,
+    TurnRepository,
+)
 from jarvis.governance.consent import ConsentBroker
 from jarvis.governance.estop import EmergencyStop
 from jarvis.governance.pathjail import PathJail
 from jarvis.governance.persistence import GrantStore
 from jarvis.governance.policy import Policy
+from jarvis.governance.scopes import Scope
 from jarvis.memory.embeddings import best_available
 from jarvis.memory.store import MemoryStore
 from jarvis.platform_ import backends as os_backends
@@ -198,6 +204,69 @@ def build_context(settings: Settings, token: str, db_path: str | None = None) ->
     )
 
 
+async def start_listening_if_asked(ctx: Context) -> None:
+    """Open the microphone at launch, when the user has asked for that.
+
+    `[voice] enabled` used to be dead configuration: read from config.toml,
+    passed into the pipeline, reported over the API, and never acted on. Setting
+    it changed nothing, so the wake word had to be started by hand on every
+    launch — which is not what "listen for your name" means.
+
+    It reverses a decision recorded in `POST /voice/listen`, which said the
+    microphone is "never started at launch: the user asks for it, once, and can
+    see it is on". The first half of that still holds and is the whole design
+    here: the user asks once, in Settings, and that is what this setting is.
+    Turning it on is the deliberate act; launching is not.
+
+    Two gates, both required, because one of them being a mistake should not
+    open a microphone: the setting, and the `mic.listen` permission. Three more
+    conditions merely stop it — a missing model, no audio device, an engaged
+    emergency stop — and none of them is an error. The core carries on and says
+    why, because failing to launch over an unavailable microphone would be a
+    worse bargain than not listening.
+    """
+    if not ctx.settings.voice.enabled:
+        return
+
+    if ctx.estop.engaged:
+        log.info("not listening at launch: the emergency stop is engaged")
+        return
+    if Scope.MIC_LISTEN not in ctx.policy.grants.granted:
+        log.info(
+            "not listening at launch: the mic.listen permission is not granted",
+            hint="Permissions -> Use the microphone",
+        )
+        return
+    if reason := ctx.voice.unavailable_reason():
+        log.info("not listening at launch", reason=reason)
+        return
+    microphone_ok, detail = ctx.capture.availability()
+    if not microphone_ok:
+        log.info("not listening at launch", reason=detail)
+        return
+
+    try:
+        await ctx.capture.start()
+    except JarvisError as exc:
+        log.warning("could not start listening at launch", detail=exc.message)
+        return
+
+    # Logged exactly like the manual path. "Was it listening at 3pm" needs an
+    # answer whether a person or this function opened the microphone.
+    ctx.audit.append(
+        AuditEntry(
+            actor="system",
+            action="voice.listen",
+            args_digest=AuditRepository.digest(
+                {"wakeWord": ctx.settings.voice.wake_word, "atLaunch": True}
+            ),
+            risk="elevated",
+            decision="allowed",
+        )
+    )
+    log.info("listening for the wake word", wake_word=ctx.settings.voice.wake_word)
+
+
 def create_app(ctx: Context) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
@@ -207,6 +276,7 @@ def create_app(ctx: Context) -> FastAPI:
             schema=ctx.db.version,
             provider=ctx.settings.ai.default,
         )
+        await start_listening_if_asked(ctx)
         yield
         await ctx.gateway.aclose()
         # Chromium is a child process; leaving it running would outlive the core.

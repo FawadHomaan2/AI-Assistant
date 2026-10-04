@@ -20,12 +20,13 @@ Say **"Jarvis"** — or press `Ctrl+Space`.
 > else and paste what it just read is refused by the gate rather than by the
 > model's good judgement.
 >
-> Everything through Phase 11 runs and is tested. **No `.exe` exists yet and
-> none has been installed anywhere.** PyInstaller and the WebView2 shell do not
-> cross-compile and this repository is authored in a Linux container, so the
-> packaging is written and structurally tested but unproven. The first CI build
-> attempt failed on a Linux-only lockfile; that is fixed and guarded, which is
-> a build error resolved rather than a build achieved. See
+> Everything through Phase 11 runs and is tested, and **the Windows installer
+> now builds** — CI produces a ~30.7 MB `jarvis-installer` artifact on every
+> pull request. **It has never been run.** Nothing has been installed, and no
+> part of the app has started on Windows: this repository is authored in a Linux
+> container, so the tray, the global shortcut, launching applications, window
+> management, the Defender/firewall/BitLocker checks, USB history and autostart
+> have only ever executed against fakes. See
 > [docs/PACKAGING.md](docs/PACKAGING.md) for the checklist that would have to
 > pass — nothing on it is ticked.
 >

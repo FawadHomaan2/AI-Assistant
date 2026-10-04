@@ -669,8 +669,26 @@ one. A simulated Windows install (`npm ci --os=win32 --cpu=x64`) fetches the
 16 MB `cli.win32-x64-msvc.node` that CI could not find, and the same command
 against the old lockfile reproduces the failure exactly.
 
-**That fixes a build error. It does not meet the gate.** No `.exe` has been
-produced yet and none has been installed anywhere.
+**With that fixed, an installer exists for the first time.** The same job, run
+on the pull request carrying the fix, completed every step: PyInstaller froze
+the core and smoke-tested it on Windows, `npm ci` installed the native binaries,
+and `npm run tauri build` produced an NSIS installer in 3m11s. The artifact is
+`jarvis-installer`, 30.7 MB, sha256
+`2cdfcdeaa69f824892178fd06d068eb56ac89f032a53d6168ff6d0a2e80660a1`.
+
+**That still does not meet the gate.** What is now proven is that the project
+*builds* on Windows — the spec, the hidden imports, the sidecar wiring and the
+NSIS packaging all hold up on a real Windows runner, which was the largest
+single unknown. What remains entirely unproven is everything that happens after
+a double-click: the installer running without administrator rights, WebView2
+being fetched on Windows 10, the app starting, the tray appearing, the hotkey
+binding, Defender's verdict on an unsigned binary that spawns PowerShell,
+autostart surviving a reboot, upgrade-over-running-core, and uninstall honouring
+the data answer. A CI runner is also not a clean machine: it has the build
+toolchain installed, which is exactly what the checklist's clean VMs do not.
+
+Nothing on the `docs/PACKAGING.md` checklist is ticked, and a built artifact is
+not permission to tick any of it.
 
 **What was verified here, on Linux:** the PyInstaller spec produces a working
 41 MB single-file binary; that binary starts, prints its handshake, applies all

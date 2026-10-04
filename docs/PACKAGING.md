@@ -4,16 +4,20 @@ Produces `AI-Assistant-Setup.exe`: a per-user NSIS installer containing the
 Tauri shell, the Python core as a single-file sidecar, and the reference
 plugin.
 
-> **The Phase 12 gate is not met.** No `.exe` exists and none has been installed
-> on a clean Windows machine. The checklist at the end is what would have to
-> pass; nothing on it is ticked.
+> **The installer builds. The Phase 12 gate is still not met.**
 >
-> The first build attempt ran on CI when this work merged to `main`, and failed:
-> the lockfile had no Windows native binaries, so the Tauri CLI could not load
-> (`Cannot find module './cli.win32-x64-msvc.node'`). That is fixed and guarded
+> The first attempt failed on a lockfile with no Windows native binaries
+> (`Cannot find module './cli.win32-x64-msvc.node'`); that is fixed and guarded
 > by `scripts/check_lockfile_platforms.py` — see **A lockfile is platform-shaped**
-> below. Fixing a build error is not the same as building, so this note stands
-> until a real installer exists.
+> below. The job now completes, and CI uploads a `jarvis-installer` artifact of
+> about 30.7 MB.
+>
+> So the build is proven and the packaging holds up on a real Windows runner.
+> **Nothing after the double-click is.** No installer has been run, nothing has
+> been installed, and no part of the app has started on Windows. A CI runner is
+> not a clean machine either — it carries the whole build toolchain, which is
+> precisely what the clean VMs below do not. The checklist at the end is what
+> the gate means, and nothing on it is ticked.
 
 ---
 
@@ -170,7 +174,9 @@ having uninstalled.
 
 ## The Phase 12 checklist
 
-None of this has been done. It is what "the gate is met" would mean.
+Building the installer is done; it is not on this list, because producing an
+artifact says nothing about what happens when someone runs it. None of the
+following has been done. It is what "the gate is met" would mean.
 
 **Clean Windows 10 22H2 and Windows 11 23H2 VMs, no developer tools:**
 

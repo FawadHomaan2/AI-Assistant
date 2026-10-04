@@ -9,6 +9,8 @@ import { useStore } from '@/state/store';
  * settles deterministically rather than racing each assertion.
  */
 vi.mock('@/lib/bridge', () => ({
+  clearEmergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  emergencyStopState: vi.fn().mockResolvedValue({ ok: true, value: false }),
   hasShell: () => false,
   getSystemSnapshot: vi.fn().mockResolvedValue({
     ok: false,

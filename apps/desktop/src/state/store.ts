@@ -13,7 +13,11 @@ import type {
   SystemSnapshot,
   ViewId,
 } from '@/types';
-import { emergencyStop as shellEmergencyStop, getSystemSnapshot } from '@/lib/bridge';
+import {
+  emergencyStop as shellEmergencyStop,
+  clearEmergencyStop as shellClearEmergencyStop,
+  getSystemSnapshot,
+} from '@/lib/bridge';
 import * as api from '@/lib/api';
 import { CoreSocket, type SocketState } from '@/lib/ws';
 
@@ -197,15 +201,28 @@ interface AppState {
   system: Loadable<SystemSnapshot>;
   refreshSystem: () => Promise<void>;
 
-  // ── Voice (UI state only until Phase 6) ─────────────────────────────────
+  // ── Voice ───────────────────────────────────────────────────────────────
   voice: VoiceState;
   /** Why voice is unavailable, straight from the core. */
   voiceReason: string;
-  toggleVoice: () => void;
+  /** The microphone, reported apart from the models — different fixes. */
+  voiceMic: { available: boolean; detail: string; listening: boolean; dropped: number };
+  /** Whether `mic.listen` is granted. Listening is refused without it. */
+  micScopeGranted: boolean;
+  /** What the wake word last heard, so the interface can show it. */
+  lastHeard: string;
+  toggleVoice: () => Promise<void>;
   refreshVoice: () => Promise<void>;
 
   // ── Emergency stop ──────────────────────────────────────────────────────
+  /** User-initiated: latches the shell and the core, then updates the UI. */
   triggerEmergencyStop: () => Promise<void>;
+  /**
+   * Apply a stop that has already happened elsewhere — the tray, or another
+   * window. Local state only: it must never call back into the shell, because
+   * the shell is what told us.
+   */
+  applyEmergencyStop: () => void;
   resume: () => Promise<void>;
 }
 
@@ -382,6 +399,51 @@ export const useStore = create<AppState>((set, get) => {
           detail: parts.join(' · '),
         });
         set({ busy: false, streamingId: null });
+        break;
+      }
+
+      // ── voice ──────────────────────────────────────────────────────────
+      // The pipeline routes every microphone transition through one method, so
+      // these events are the authority on what the microphone is doing. The
+      // indicator follows them rather than guessing from what was requested.
+      case 'voice.state': {
+        set({ voice: event.state as VoiceState });
+        break;
+      }
+
+      case 'voice.wake': {
+        state.logActivity({ summary: 'Woken by the wake word', status: 'succeeded' });
+        break;
+      }
+
+      case 'voice.transcript': {
+        // Shown as the user's own message: it is what they said, and a spoken
+        // turn should read in the transcript exactly like a typed one.
+        const heard = String(event.text ?? '').trim();
+        if (heard) {
+          set({ lastHeard: heard });
+          state.pushMessage({ role: 'user', content: heard });
+        }
+        break;
+      }
+
+      case 'voice.interrupted': {
+        state.logActivity({ summary: 'Interrupted while speaking', status: 'cancelled' });
+        break;
+      }
+
+      case 'voice.unavailable':
+      case 'voice.error': {
+        state.pushMessage({
+          role: 'system',
+          notice: true,
+          content: String(event.detail ?? 'The microphone stopped working.'),
+        });
+        state.logActivity({
+          summary: 'Voice problem',
+          status: 'failed',
+          detail: String(event.detail ?? ''),
+        });
         break;
       }
 
@@ -617,6 +679,9 @@ export const useStore = create<AppState>((set, get) => {
 
     voice: 'unavailable',
     voiceReason: '',
+    voiceMic: { available: false, detail: '', listening: false, dropped: 0 },
+    micScopeGranted: false,
+    lastHeard: '',
 
     refreshVoice: async () => {
       const res = await api.voiceStatus();
@@ -624,14 +689,36 @@ export const useStore = create<AppState>((set, get) => {
         set({ voice: 'unavailable', voiceReason: res.message });
         return;
       }
+      const { microphone, micScopeGranted, ready, state: coreState, reason } = res.value;
       set({
-        voice: res.value.ready ? (res.value.state as VoiceState) : 'unavailable',
-        voiceReason: res.value.reason,
+        // Ready means the models are present. The microphone is a separate
+        // question, and `voice` reflects what the pipeline reports either way
+        // so a listening indicator can never be on while the core says off.
+        voice: ready ? (coreState as VoiceState) : 'unavailable',
+        voiceReason: reason,
+        micScopeGranted,
+        voiceMic: {
+          available: microphone.available,
+          detail: microphone.detail,
+          listening: microphone.listening,
+          dropped: microphone.framesDropped,
+        },
       });
     },
 
-    toggleVoice: () => {
-      const { voiceReason, voice } = get();
+    toggleVoice: async () => {
+      const { voice, voiceReason, voiceMic, micScopeGranted } = get();
+
+      // Already live: stop. Stopping is always allowed and always works, so it
+      // is checked before any of the reasons starting might not be.
+      if (voice === 'listening' || voice === 'recording' || voice === 'speaking') {
+        const res = await api.stopListening();
+        set({ voice: res.ok ? (res.value.state as VoiceState) : 'off' });
+        get().logActivity({ summary: 'Stopped listening', status: 'succeeded' });
+        void get().refreshVoice();
+        return;
+      }
+
       if (voice === 'unavailable') {
         // The core says exactly which model is missing and how big it is, so
         // the message is specific rather than "voice is not available".
@@ -645,37 +732,132 @@ export const useStore = create<AppState>((set, get) => {
         get().logActivity({ summary: 'Voice unavailable', status: 'blocked', detail: voiceReason });
         return;
       }
+
+      if (!micScopeGranted) {
+        // Deliberately not granted from here. A microphone that stays open is
+        // the most invasive thing this program does, so the permission is
+        // given once, on purpose, in Permissions — not as a side effect of
+        // clicking the button that uses it.
+        get().pushMessage({
+          role: 'system',
+          notice: true,
+          content:
+            'Listening needs the "Use the microphone" permission, which is off by ' +
+            'default. Turn it on in Permissions, then press the microphone again.',
+        });
+        get().logActivity({
+          summary: 'Listening refused',
+          status: 'blocked',
+          detail: 'mic.listen is not granted',
+        });
+        return;
+      }
+
+      if (!voiceMic.available) {
+        get().pushMessage({ role: 'system', notice: true, content: voiceMic.detail });
+        get().logActivity({
+          summary: 'No microphone',
+          status: 'blocked',
+          detail: voiceMic.detail,
+        });
+        return;
+      }
+
+      const res = await api.startListening();
+      if (!res.ok) {
+        get().pushMessage({ role: 'system', notice: true, content: res.message });
+        get().logActivity({ summary: 'Could not listen', status: 'failed', detail: res.message });
+        void get().refreshVoice();
+        return;
+      }
+      // The state shown comes from the core's reply, not from the fact that the
+      // request succeeded, so the indicator cannot claim to be listening while
+      // the pipeline says otherwise.
+      set({ voice: res.value.state as VoiceState });
+      get().logActivity({ summary: 'Listening for "Jarvis"', status: 'succeeded' });
+    },
+
+    applyEmergencyStop: () => {
+      // Local only. The shell emits `jarvis://emergency-stop` when it latches,
+      // and this used to be wired straight to `triggerEmergencyStop`, which
+      // invokes the shell again: engage, emit, listen, engage, with an HTTP
+      // post and a chat message every time round. One button press froze the
+      // window. The shell now only emits on a real transition, and this path
+      // calls nothing, so neither side can restart the loop on its own.
+      if (get().stopped) return;
+      set({
+        stopped: true,
+        mode: 'paused',
+        busy: false,
+        consent: null,
+        voice: 'off',
+        streamingId: null,
+        voiceMic: { ...get().voiceMic, listening: false },
+      });
+      get().logActivity({
+        summary: 'EMERGENCY STOP activated',
+        status: 'cancelled',
+        detail: 'All automation halted',
+      });
       get().pushMessage({
         role: 'system',
         notice: true,
         content:
-          'Audio capture runs in the desktop shell, which is not wired to the ' +
-          'microphone yet. The pipeline behind it is built and reports ready.',
+          'Emergency stop activated. Jarvis is paused, any in-flight response was ' +
+          'abandoned, the microphone is closed, and every tool refuses until you ' +
+          'resume. Press Resume to clear it.',
       });
-      get().logActivity({ summary: 'Voice requested', status: 'blocked' });
     },
 
     triggerEmergencyStop: async () => {
-      set({ stopped: true, mode: 'paused', busy: false, consent: null, voice: 'off', streamingId: null });
-      get().logActivity({ summary: 'EMERGENCY STOP activated', status: 'cancelled', detail: 'All automation halted' });
-      get().pushMessage({
-        role: 'system',
-        notice: true,
-        content:
-          'Emergency stop activated. Jarvis is paused, any in-flight response was abandoned, ' +
-          'and the core has been told to stop. Tool execution does not exist yet, so there ' +
-          `was nothing else running to abort; per-tool cancellation arrives in Phase ${PHASE.permissions}.`,
-      });
-      // Latch it in both the shell and the core; neither call is required for
-      // the UI to be safe, so failures are logged rather than surfaced twice.
+      get().applyEmergencyStop();
+      // Latch it in both the shell and the core. Neither call is needed for the
+      // UI to be safe, so a failure is logged rather than surfaced twice.
       await shellEmergencyStop();
       await api.engageEmergencyStop();
     },
 
     resume: async () => {
-      set({ stopped: false, mode: 'guarded' });
-      await api.clearEmergencyStop();
-      get().logActivity({ summary: 'Emergency stop cleared', status: 'succeeded' });
+      // Clear the shell's latch as well as the core's. Only the core's was ever
+      // cleared, and the shell's is a process-global flag, so the stop survived
+      // every resume and the only way back was restarting the application.
+      const [shell, core] = await Promise.all([
+        shellClearEmergencyStop(),
+        api.clearEmergencyStop(),
+      ]);
+
+      // Resume is never blocked on a reachable core. Refusing to leave the
+      // stopped state because a call failed is the trap this fix exists to
+      // remove: it leaves no way back except restarting. A core that cannot be
+      // reached also cannot run anything, so clearing locally is not a claim
+      // that something unsafe is now permitted.
+      set({ stopped: false, mode: 'guarded', busy: false, streamingId: null });
+
+      const failures = [
+        core.ok ? '' : `the core (${core.message})`,
+        shell.ok ? '' : 'the desktop shell',
+      ].filter(Boolean);
+
+      get().logActivity({
+        summary: 'Emergency stop cleared',
+        status: failures.length ? 'blocked' : 'succeeded',
+        detail: failures.length
+          ? `Did not confirm: ${failures.join(' and ')}`
+          : 'Shell and core both released',
+      });
+
+      if (failures.length) {
+        // Said plainly, because the half-state is genuinely confusing: the
+        // interface is running but something downstream may still refuse.
+        get().pushMessage({
+          role: 'system',
+          notice: true,
+          content:
+            `Jarvis has resumed here, but ${failures.join(' and ')} did not confirm. ` +
+            'If actions are still refused, press Stop and Resume once more, or restart Jarvis.',
+        });
+      }
+      void get().refreshVoice();
     },
   };
 });

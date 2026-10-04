@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { Unavailable } from '@/types';
 import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useStore, CURRENT_PHASE } from '@/state/store';
-import { getShellInfo, hasShell, setGlobalShortcut } from '@/lib/bridge';
+import {
+  checkForUpdate,
+  getShellInfo,
+  hasShell,
+  installUpdate,
+  setGlobalShortcut,
+  updateStatus,
+  type UpdateStatus,
+} from '@/lib/bridge';
 import {
   fetchModel,
   listModels,
@@ -14,6 +23,13 @@ import {
 import './views.css';
 
 type Provider = 'local' | 'cloud' | 'custom';
+
+/** The union has three shapes and only one carries a message. */
+function why(reason: Unavailable, fallback: string): string {
+  if (reason.kind === 'error') return reason.message;
+  if (reason.kind === 'no-bridge') return 'The desktop shell is not available.';
+  return fallback;
+}
 
 const PROVIDERS: { id: Provider; label: string; detail: string }[] = [
   { id: 'local', label: 'Local model', detail: 'llama.cpp (GGUF) or Ollama on this machine. Nothing leaves the computer.' },
@@ -35,6 +51,9 @@ export function SettingsView() {
   const [models, setModels] = useState<ModelRow[] | null>(null);
   const [modelNote, setModelNote] = useState('');
   const [modelError, setModelError] = useState('');
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateError, setUpdateError] = useState('');
 
   const loadModels = useCallback(async () => {
     const res = await listModels();
@@ -49,6 +68,43 @@ export function SettingsView() {
   useEffect(() => {
     void loadModels();
   }, [loadModels]);
+
+  // Reads the local state only. Checking on every render would mean an
+  // outbound request each time someone opens this page, which is not a thing
+  // to do on their behalf without asking.
+  useEffect(() => {
+    if (!hasShell()) return;
+    void updateStatus().then((res) => {
+      if (res.ok) setUpdate(res.value);
+    });
+  }, []);
+
+  const onCheckForUpdate = useCallback(async () => {
+    setUpdateBusy(true);
+    setUpdateError('');
+    const res = await checkForUpdate();
+    setUpdateBusy(false);
+    if (!res.ok) {
+      // A failed check and a check that found nothing look identical
+      // otherwise, and the difference matters when a release is overdue.
+      setUpdateError(why(res.reason, 'The check failed.'));
+      return;
+    }
+    setUpdate(res.value);
+  }, []);
+
+  // Not routed through the consent dialog: that broker exists for actions the
+  // core proposes, and nothing is waiting on the answer here. The button says
+  // what it does and the card says what it keeps, which is the confirmation
+  // for something the person clicked deliberately.
+  const onInstallUpdate = useCallback(async () => {
+    setUpdateBusy(true);
+    setUpdateError('');
+    const res = await installUpdate();
+    // On success the shell restarts, so this line is only reached on failure.
+    setUpdateBusy(false);
+    if (!res.ok) setUpdateError(why(res.reason, 'The update could not be installed.'));
+  }, []);
 
   const loadPlugins = useCallback(async () => {
     const res = await listPlugins();
@@ -136,6 +192,79 @@ export function SettingsView() {
           <code>config.toml</code> in the Jarvis data folder and restart. Keys go to
           the Windows Credential Manager by name; the file never holds one.
         </p>
+      </Card>
+
+      <Card title="Updates">
+        {!hasShell() ? (
+          <p className="card__note">
+            Updates are handled by the desktop shell, which is not running — this
+            is the browser-only development view.
+          </p>
+        ) : update === null ? (
+          <p className="card__note">Reading the update configuration…</p>
+        ) : (
+          <>
+            <ul className="datalist">
+              <li>
+                <span>Installed version</span>
+                <span className="datalist__v">{update.currentVersion}</span>
+              </li>
+              <li>
+                <span>Automatic updates</span>
+                <span className="datalist__v">
+                  <StatusBadge
+                    tone={update.configured ? 'success' : 'muted'}
+                    label={update.configured ? 'Configured' : 'Not set up'}
+                  />
+                </span>
+              </li>
+              {update.availableVersion && (
+                <li>
+                  <span>Available</span>
+                  <span className="datalist__v">{update.availableVersion}</span>
+                </li>
+              )}
+            </ul>
+
+            <p className="card__note">{updateError || update.detail}</p>
+
+            {update.notes && <p className="card__note">{update.notes}</p>}
+
+            {update.configured && (
+              <div className="row">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void onCheckForUpdate()}
+                  disabled={updateBusy}
+                >
+                  {updateBusy ? 'Working…' : 'Check for updates'}
+                </button>
+                {update.availableVersion && (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() => void onInstallUpdate()}
+                    disabled={updateBusy}
+                  >
+                    Install and restart
+                  </button>
+                )}
+              </div>
+            )}
+
+            {!update.configured && (
+              <Explainer>
+                This build has no update signing key, so it cannot verify an
+                update and will not download one. Updating means installing a
+                new build by hand. See <code>docs/UPDATES.md</code> for setting
+                it up — it needs a keypair you generate and keep, because
+                whoever holds the private half can install software on every
+                machine running Jarvis.
+              </Explainer>
+            )}
+          </>
+        )}
       </Card>
 
       <Card title="Providers the core reports">

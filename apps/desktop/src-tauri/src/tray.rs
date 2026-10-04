@@ -79,11 +79,11 @@ fn on_menu(app: &AppHandle, id: &str) {
             let _ = app.emit("jarvis://navigate", "settings");
         }
         "stop" => {
-            // Latch the stop in the shell as well as the UI, so it holds even
-            // if the webview is not currently showing.
+            // `engage` emits the event itself, and only on a real transition.
+            // Emitting again here delivered it twice, so the interface engaged
+            // twice per tray click and started two feedback loops.
             crate::estop::engage(app);
             window::show_and_focus(app);
-            let _ = app.emit("jarvis://emergency-stop", ());
         }
         "quit" => app.exit(0),
         other => log::warn!("unhandled tray menu id: {other}"),

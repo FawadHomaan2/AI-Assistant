@@ -186,6 +186,102 @@ Cloud providers additionally need `allow_cloud = true` and an API key, which is
 stored in the Windows Credential Manager by name. `config.toml` never holds a
 key, and pasting one into the `credential` field is rejected with an explanation.
 
+### Connecting Claude, ChatGPT, Gemini and the rest
+
+Four adapters cover them. `config.toml` ships every block below commented out —
+uncomment one, set `default` to its name, and set `allow_cloud = true`.
+
+| Service | `kind` | Notes |
+|---|---|---|
+| Claude | `anthropic` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
+| ChatGPT | `openai_compat` | `base_url = "https://api.openai.com/v1"` |
+| Gemini | `google` | Its own adapter — Gemini's wire format is neither of the others |
+| OpenRouter | `openai_compat` | One key, hundreds of models from many vendors |
+| Groq, Together, DeepSeek, Mistral, Azure | `openai_compat` | Same adapter, different `base_url` |
+| Ollama | `ollama` | Local, no key, nothing leaves the machine |
+| LM Studio, vLLM, llama.cpp | `openai_compat` or `llama_cpp` | Local, `base_url` on 127.0.0.1 |
+
+```toml
+[ai]
+default = "anthropic"
+allow_cloud = true          # a separate, deliberate decision
+
+[ai.providers.anthropic]
+kind = "anthropic"
+model = "claude-opus-5-5"
+credential = "jarvis/anthropic"   # the NAME of a credential entry, never the key
+```
+
+**OpenRouter is the one to reach for if you want to try many models** without an
+account for each — it speaks the OpenAI API, so it needs no new adapter:
+
+```toml
+[ai.providers.openrouter]
+kind = "openai_compat"
+model = "anthropic/claude-opus-4.1"
+base_url = "https://openrouter.ai/api/v1"
+credential = "jarvis/openrouter"
+```
+
+Model names move faster than this file, so the values above are starting points
+rather than promises. `GET /providers/health` reports what each configured
+provider can actually reach; for Gemini it lists the models your key serves and
+names alternatives when the configured one has been retired, because Google
+retires IDs on its own schedule and a bare 404 explains that badly.
+
+Two things worth knowing before you add a key:
+
+**Nothing is sent anywhere until `allow_cloud = true`.** Storing a key is not
+consent to use it; the gate is separate and off by default, and a configured
+cloud provider is refused while it is off. `allow_cloud_content` is a second,
+narrower switch for sending file and document *contents* rather than just your
+messages.
+
+**Local and cloud are not interchangeable on privacy.** With Ollama or a local
+OpenAI-compatible server, conversations stay on the machine. With any cloud
+provider they do not, and the Privacy dashboard records each time that happens.
+
+### Turning on the wake word
+
+Voice needs the `voice` extra, which is not installed by default and is not in
+the packaged build — see `docs/PHASES.md` for why.
+
+```bash
+cd services/jarvis
+.venv/Scripts/pip install -e ".[dev,secrets,voice]"   # macOS/Linux: .venv/bin/pip
+```
+
+On Linux also install PortAudio (`sudo apt install libportaudio2`); on Windows
+it comes with the Python package.
+
+Then, with Jarvis running:
+
+1. **Permissions → "Use the microphone"**, and turn it on. It is off by default
+   and the microphone button will not open it for you — a microphone that stays
+   open is the most invasive thing this program does, so the permission is given
+   once, deliberately, rather than as a side effect of pressing the button that
+   uses it.
+2. **Settings → Downloadable models**, and fetch the openWakeWord models
+   (about 4 MB, three files) and the Piper voice (about 62 MB) if you want
+   spoken replies. Each is verified against a recorded SHA-256.
+3. For speech recognition, `POST /voice/stt/prepare` once — about 74 MB. This is
+   the one download Jarvis does not checksum itself; faster-whisper fetches its
+   own weights through `huggingface_hub`, which verifies them against the Hub's
+   hashes.
+4. Press the microphone, and say **"Hey Jarvis"**.
+
+The button shows what the microphone is actually doing — waiting, recording,
+thinking, speaking — because every transition in the core goes through one
+method that emits the state. It cannot show "listening" while the core says
+otherwise. Press it again, use the tray, or hit the emergency stop to close the
+microphone; the emergency stop always closes it.
+
+What works today: the wake word fires, the pre-roll buffer keeps the first word
+of "Jarvis, open Chrome", and the utterance goes through the same orchestrator
+as a typed message — so a spoken request gets no more authority than a typed
+one, and every tool it proposes is gated identically. What does not: playing the
+spoken reply back, which needs audio output in the shell.
+
 ### UI only, in a browser
 ```bash
 npm run dev            # http://localhost:5183
@@ -236,6 +332,25 @@ cd services/jarvis
 # Palette
 python3 scripts/check_contrast.py                  # WCAG AA, both themes
 ```
+
+### Updating
+
+The app can update itself, but **it is switched off until a signing key
+exists** — the repository ships none, and a placeholder key nobody generated
+would be worse than nothing. Settings → Updates says which state you are in,
+and an unconfigured build makes no network request looking for updates.
+
+Until it is set up, updating means installing a new build over the old one.
+That keeps everything in `%LOCALAPPDATA%\jarvis`: conversations, learned
+memory, the audit log, permissions, plugins and every downloaded model. Only
+the program is replaced.
+
+If you are running from source — which you must be, for voice — updating is
+`git pull` and `npm ci`. No reinstall.
+
+`docs/UPDATES.md` has the setup: a keypair you generate and keep, two
+repository secrets, and a tagged release. Nothing in it has been run end to
+end yet, and it says so.
 
 ### Build the installer (Windows only)
 ```powershell

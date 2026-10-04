@@ -16,6 +16,7 @@ from jarvis.ai import privacy
 from jarvis.ai.base import Provider
 from jarvis.ai.providers.anthropic import AnthropicProvider
 from jarvis.ai.providers.dev_echo import DevEchoProvider
+from jarvis.ai.providers.google import GoogleProvider
 from jarvis.ai.providers.ollama import OllamaProvider
 from jarvis.ai.providers.openai_compat import OpenAICompatProvider
 from jarvis.ai.types import Capabilities, Chunk, CompletionRequest, JobClass
@@ -31,6 +32,11 @@ REGISTRY: dict[str, type[Provider]] = {
     "anthropic": AnthropicProvider,
     "openai_compat": OpenAICompatProvider,
     "ollama": OllamaProvider,
+    "google": GoogleProvider,
+    # llama.cpp's server speaks the OpenAI API, so it is the same adapter with a
+    # local base_url. It was already an accepted `kind` with nothing behind it,
+    # which failed at build time with "Unknown provider kind".
+    "llama_cpp": OpenAICompatProvider,
 }
 
 

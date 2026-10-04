@@ -18,7 +18,9 @@ log = get_logger(__name__)
 
 DEFAULT_BASE_URL = "https://api.anthropic.com"
 API_VERSION = "2023-06-01"
-DEFAULT_MODEL = "claude-sonnet-4-5"
+# Current as of this writing. Model IDs carry no date suffix — "claude-opus-5-5",
+# never "claude-opus-5-5-20260401". Override per provider in config.toml.
+DEFAULT_MODEL = "claude-opus-5-5"
 
 
 class AnthropicProvider(Provider):

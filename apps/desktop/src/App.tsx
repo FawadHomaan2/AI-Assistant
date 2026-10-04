@@ -24,6 +24,7 @@ export function App() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const triggerEmergencyStop = useStore((s) => s.triggerEmergencyStop);
+  const applyEmergencyStop = useStore((s) => s.applyEmergencyStop);
   const logActivity = useStore((s) => s.logActivity);
   const connectCore = useStore((s) => s.connectCore);
   const Current = VIEWS[view];
@@ -53,12 +54,22 @@ export function App() {
     void listen<string>('jarvis://navigate', (target) => {
       if (target in VIEWS) setView(target as ViewId);
     }).then((off) => offs.push(off));
-    void listen<null>('jarvis://emergency-stop', () => void triggerEmergencyStop()).then((off) => offs.push(off));
+    // `applyEmergencyStop`, not `triggerEmergencyStop`: the shell is what
+    // emitted this, so calling back into the shell is what made one press
+    // engage, emit, listen and engage again without end.
+    void listen<null>('jarvis://emergency-stop', () => applyEmergencyStop()).then((off) =>
+      offs.push(off),
+    );
+    void listen<null>('jarvis://emergency-stop-cleared', () => {
+      // Cleared from somewhere else — keep the indicator honest rather than
+      // showing paused until the next reload.
+      if (useStore.getState().stopped) useStore.setState({ stopped: false, mode: 'guarded' });
+    }).then((off) => offs.push(off));
     void listen<null>('jarvis://activated', () =>
       logActivity({ summary: 'Activated via global shortcut', status: 'succeeded' }),
     ).then((off) => offs.push(off));
     return () => offs.forEach((off) => off());
-  }, [setView, triggerEmergencyStop, logActivity]);
+  }, [setView, applyEmergencyStop, logActivity]);
 
   return (
     <div className="app">

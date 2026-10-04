@@ -92,6 +92,33 @@ jobs:
       - run: playwright install --with-deps chromium
       - run: pytest tests/test_phase7_e2e.py tests/test_phase7_browser.py tests/test_phase7_urls.py -q
 
+  voice:
+    name: Voice gate (real wake word)
+    runs-on: ubuntu-latest
+    # Its own job for the same reason as the browser gate: it downloads real
+    # models and runs real inference, which is too slow for the main suite. It
+    # is also the only thing that can catch a whole class of bug — a fake
+    # detector reports whatever it is told to, so it cannot notice that the
+    # real model's scores are keyed by filename rather than by wake word, which
+    # is exactly the bug that made detection silently never fire.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # sounddevice loads PortAudio at import time, so without this the import
+      # raises OSError and the capture layer can only report itself
+      # unavailable. Installed here so the gate exercises the real path.
+      - name: Install PortAudio
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2
+      - name: Install the voice extra
+        working-directory: services/jarvis
+        run: pip install -e ".[dev,voice]"
+      - name: Wake word fires on real speech, and not on other speech
+        working-directory: services/jarvis
+        run: pytest tests/test_voice_wake_real.py tests/test_voice_capture.py -q
+
   shell:
     name: Rust shell (clippy · test)
     runs-on: ubuntu-latest

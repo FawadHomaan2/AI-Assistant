@@ -18,6 +18,8 @@ vi.mock('@/lib/bridge', () => ({
     reason: { kind: 'no-bridge', what: 'core_endpoint' },
   }),
   emergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  clearEmergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  emergencyStopState: vi.fn().mockResolvedValue({ ok: true, value: false }),
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 

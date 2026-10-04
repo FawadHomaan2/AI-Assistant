@@ -1,0 +1,162 @@
+name: Release
+
+# Publishes a signed installer and the manifest the in-app updater reads.
+#
+# Fires on a version tag, never on a push to a branch: a release is a
+# deliberate act, and the updater points every installed copy of Jarvis at
+# whatever this produces.
+#
+# Requires two repository secrets, both from `npm run tauri signer generate`:
+#
+#   TAURI_SIGNING_PRIVATE_KEY           the private key's contents
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  the passphrase set when generating it
+#
+# Without them this job fails rather than publishing an unsigned build. An
+# unsigned release is worse than no release here: the updater would reject it,
+# so it would look published and be uninstallable.
+#
+# `latest.json` is written by the step below rather than by a third-party
+# action, so the only things with a hand on the release are GitHub's own
+# actions and this file.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Lets a failed publish be retried without moving the tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and publish'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Signed Windows installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # Refuse early and in plain words. Discovering a missing key after a
+      # fifteen-minute build, from a Tauri error about signing, is a worse
+      # five minutes than this check.
+      - name: Check the signing key is present
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set. Generate a keypair with"
+            echo "::error::'npm run tauri signer generate', add the private key and its"
+            echo "::error::password as repository secrets, and put the public key in"
+            echo "::error::apps/desktop/src-tauri/tauri.conf.json. See docs/UPDATES.md."
+            exit 1
+          fi
+
+      # The tag and the version in tauri.conf.json have to agree: the updater
+      # compares the manifest's version against the running build's, so a
+      # mismatch either offers an update that installs the same version or
+      # hides one that exists.
+      - name: Check the tag matches the configured version
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          CONFIGURED=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$TAG" != "v$CONFIGURED" ]; then
+            echo "::error::Tag $TAG does not match version $CONFIGURED in tauri.conf.json."
+            echo "::error::Bump the version, commit, then tag v$CONFIGURED."
+            exit 1
+          fi
+
+      - name: Build the core sidecar
+        working-directory: services/jarvis
+        run: |
+          pip install -e ".[documents]"
+          pip install pyinstaller
+      - name: Freeze and smoke-test the core
+        working-directory: .
+        run: python scripts/build_core.py
+
+      - run: npm ci
+
+      # `createUpdaterArtifacts` is passed here rather than committed, because
+      # setting it in tauri.conf.json makes every build require a signing key —
+      # including CI's ordinary Windows build and anyone building from source.
+      - name: Build the installer and sign the update artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
+
+      - name: Write latest.json
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          BUNDLE=src-tauri/target/release/bundle/nsis
+
+          INSTALLER=$(ls "$BUNDLE"/*-setup.exe | head -1)
+          SIGFILE="${INSTALLER}.sig"
+          if [ ! -f "$SIGFILE" ]; then
+            echo "::error::No signature beside $INSTALLER. The build did not sign it."
+            exit 1
+          fi
+
+          # The signature is read from the .sig file rather than recomputed, so
+          # the manifest describes the artifact that was actually built.
+          SIG=$(cat "$SIGFILE")
+          NAME=$(basename "$INSTALLER")
+
+          cat > "$BUNDLE/latest.json" <<JSON
+          {
+            "version": "${TAG#v}",
+            "notes": "See https://github.com/${REPO}/releases/tag/${TAG}",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${SIG}",
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/${NAME}"
+              }
+            }
+          }
+          JSON
+          echo "wrote latest.json for $NAME"
+          cat "$BUNDLE/latest.json"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          # Not a draft: the updater reads latest.json from the release assets,
+          # and a draft's assets are not public, so the manifest would 404 for
+          # everyone it is meant to serve.
+          draft: false
+          generate_release_notes: true
+          files: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+            apps/desktop/src-tauri/target/release/bundle/nsis/latest.json

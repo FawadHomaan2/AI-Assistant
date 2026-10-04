@@ -102,9 +102,26 @@ class VoicePipeline:
             return
         self._state = state
         log.debug("voice state", state=state.value)
-        await self._emit(PipelineEvent("voice.state", {"state": state.value}))
+        await self.emit(PipelineEvent("voice.state", {"state": state.value}))
 
-    async def _emit(self, event: PipelineEvent) -> None:
+    def set_event_sink(self, sink: Callable[[PipelineEvent], Awaitable[None]] | None) -> None:
+        """Direct pipeline events at a connected interface.
+
+        The pipeline is built once at start-up but the interface comes and goes,
+        so the sink is installed when a WebSocket connects and cleared when it
+        leaves — the same arrangement the consent broker uses for prompts.
+        Clearing matters: emitting into a closed socket raises inside whatever
+        happened to be driving the state machine.
+        """
+        self._on_event = sink
+
+    async def emit(self, event: PipelineEvent) -> None:
+        """Publish a pipeline event.
+
+        Public because capture publishes through it too: a frame rejected by the
+        microphone belongs on the same stream the interface already watches, not
+        on a second one it would have to learn about.
+        """
         if self._on_event is not None:
             await self._on_event(event)
 
@@ -168,7 +185,7 @@ class VoicePipeline:
 
         if self._state is VoiceState.LISTENING:
             if self.wake.push(frame) is not None:
-                await self._emit(PipelineEvent("voice.wake", {"word": self.wake.status().model}))
+                await self.emit(PipelineEvent("voice.wake", {"word": self.wake.status().model}))
                 await self.start_recording()
             return None
 
@@ -194,7 +211,7 @@ class VoicePipeline:
             )
             return None
 
-        await self._emit(PipelineEvent("voice.transcript", transcript.to_dict()))
+        await self.emit(PipelineEvent("voice.transcript", transcript.to_dict()))
         return transcript
 
     async def _check_barge_in(self, frame: bytes) -> bool:
@@ -209,7 +226,7 @@ class VoicePipeline:
         log.info("barge-in: user interrupted")
         self._barge_in_ms = 0.0
         await self.cancel_speech()
-        await self._emit(PipelineEvent("voice.interrupted", {}))
+        await self.emit(PipelineEvent("voice.interrupted", {}))
         return True
 
     # ── playback ─────────────────────────────────────────────────────────
@@ -219,7 +236,7 @@ class VoicePipeline:
             return
         status = self.tts.status()
         if not status.available:
-            await self._emit(
+            await self.emit(
                 PipelineEvent(
                     "voice.unavailable", {"component": "text-to-speech", "detail": status.detail}
                 )
@@ -233,7 +250,7 @@ class VoicePipeline:
         async def play() -> None:
             for chunk in chunks:
                 audio = await asyncio.to_thread(self.tts.synthesise, chunk)
-                await self._emit(PipelineEvent("voice.audio", {"text": chunk, "bytes": len(audio)}))
+                await self.emit(PipelineEvent("voice.audio", {"text": chunk, "bytes": len(audio)}))
 
         self._speaking_task = asyncio.create_task(play())
         try:

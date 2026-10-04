@@ -14,11 +14,17 @@ import respx
 
 from jarvis.ai.providers.anthropic import AnthropicProvider
 from jarvis.ai.providers.dev_echo import BANNER, DevEchoProvider
+from jarvis.ai.providers.google import GoogleProvider
 from jarvis.ai.providers.ollama import OllamaProvider
 from jarvis.ai.providers.openai_compat import OpenAICompatProvider, is_local_url
 from jarvis.ai.types import CompletionRequest, JobClass, Message
 from jarvis.config.settings import ProviderSettings
-from jarvis.util.errors import ProviderAuthError, ProviderNotConfigured, ProviderUnavailable
+from jarvis.util.errors import (
+    ProviderAuthError,
+    ProviderError,
+    ProviderNotConfigured,
+    ProviderUnavailable,
+)
 
 
 def _req(text: str = "hi") -> CompletionRequest:
@@ -216,3 +222,291 @@ class TestOllama:
 
     async def test_is_never_cloud(self) -> None:
         assert OllamaProvider("o", ProviderSettings(kind="ollama")).is_cloud is False
+
+
+class TestGemini:
+    """Gemini's wire format is neither Anthropic's nor OpenAI's, which is the
+    whole reason it is a separate adapter. These pin the three differences that
+    fail silently rather than loudly."""
+
+    def _provider(self, model: str = "gemini-2.0-flash") -> GoogleProvider:
+        return GoogleProvider(
+            "gemini",
+            ProviderSettings(
+                kind="google",
+                model=model,
+                credential="jarvis/gemini",
+                base_url="https://gemini.test",
+            ),
+        )
+
+    @respx.mock
+    async def test_parses_sse_stream(self, monkeypatch) -> None:
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: "test-key")
+        body = (
+            'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}\n\n'
+            'data: {"candidates":[{"content":{"parts":[{"text":" world"}],"role":"model"},'
+            '"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":7,'
+            '"candidatesTokenCount":3}}\n\n'
+        )
+        route = respx.post(
+            "https://gemini.test/v1beta/models/gemini-2.0-flash:streamGenerateContent"
+        ).mock(return_value=httpx.Response(200, text=body))
+
+        text, final = await _collect(self._provider())
+
+        assert text == "Hello world"
+        assert final is not None and final.usage is not None
+        assert final.usage.tokens_in == 7
+        assert final.usage.tokens_out == 3
+        assert final.stop_reason == "STOP"
+        # Without ?alt=sse the endpoint returns one JSON array at the end, which
+        # looks exactly like a provider that refuses to stream.
+        assert route.calls.last.request.url.params["alt"] == "sse"
+
+    @respx.mock
+    async def test_the_assistant_role_is_model_not_assistant(self, monkeypatch) -> None:
+        """Sending "assistant" is accepted and then ignored, so the whole
+        conversation reads as though the user said everything."""
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: "test-key")
+        route = respx.post(
+            "https://gemini.test/v1beta/models/gemini-2.0-flash:streamGenerateContent"
+        ).mock(return_value=httpx.Response(200, text='data: {"candidates":[]}\n\n'))
+
+        provider = self._provider()
+        request = CompletionRequest(
+            messages=[
+                Message("system", "be brief"),
+                Message("user", "hi"),
+                Message("assistant", "hello"),
+                Message("user", "again"),
+            ]
+        )
+        async for _ in provider.stream(request):
+            pass
+
+        sent = json.loads(route.calls.last.request.content)
+        assert [c["role"] for c in sent["contents"]] == ["user", "model", "user"]
+        assert "assistant" not in json.dumps(sent["contents"])
+        # The system prompt is a separate field, not a message.
+        assert sent["systemInstruction"]["parts"][0]["text"] == "be brief"
+        assert sent["contents"][0]["parts"][0]["text"] == "hi"
+
+    @respx.mock
+    async def test_the_key_goes_in_a_header_not_the_url(self, monkeypatch) -> None:
+        """A key in a query string ends up in proxy logs and crash reports."""
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: "secret-key")
+        route = respx.post(
+            "https://gemini.test/v1beta/models/gemini-2.0-flash:streamGenerateContent"
+        ).mock(return_value=httpx.Response(200, text='data: {"candidates":[]}\n\n'))
+
+        async for _ in self._provider().stream(_req()):
+            pass
+
+        request = route.calls.last.request
+        assert request.headers["x-goog-api-key"] == "secret-key"
+        assert "secret-key" not in str(request.url)
+        assert "key" not in request.url.params
+
+    @respx.mock
+    async def test_a_mid_stream_error_is_raised_despite_http_200(self, monkeypatch) -> None:
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: "test-key")
+        respx.post("https://gemini.test/v1beta/models/gemini-2.0-flash:streamGenerateContent").mock(
+            return_value=httpx.Response(
+                200,
+                text=(
+                    'data: {"error":{"message":"quota exceeded","status":"RESOURCE_EXHAUSTED"}}\n\n'
+                ),
+            )
+        )
+        with pytest.raises(ProviderError, match="quota exceeded"):
+            await _collect(self._provider())
+
+    async def test_no_key_is_refused_before_any_request(self, monkeypatch) -> None:
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: None)
+        with pytest.raises(ProviderNotConfigured):
+            await _collect(self._provider())
+
+    @respx.mock
+    async def test_health_names_the_alternatives_when_the_model_is_gone(self, monkeypatch) -> None:
+        """Google retires model IDs on its own schedule. A bare 404 is the
+        worst possible explanation of that, so health lists what the key has."""
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: "test-key")
+        monkeypatch.setattr("jarvis.config.secrets.has", lambda _n: True)
+        respx.get("https://gemini.test/v1beta/models").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {
+                            "name": "models/gemini-9-turbo",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/embedding-only",
+                            "supportedGenerationMethods": ["embedContent"],
+                        },
+                    ]
+                },
+            )
+        )
+        ok, detail = await self._provider("gemini-retired").health()
+        assert not ok
+        assert "gemini-retired" in detail
+        assert "gemini-9-turbo" in detail
+        # Embedding-only models cannot answer a chat turn, so they are not
+        # offered as alternatives.
+        assert "embedding-only" not in detail
+
+    @respx.mock
+    async def test_health_passes_when_the_model_is_listed(self, monkeypatch) -> None:
+        monkeypatch.setattr("jarvis.config.secrets.get", lambda _n: "test-key")
+        monkeypatch.setattr("jarvis.config.secrets.has", lambda _n: True)
+        respx.get("https://gemini.test/v1beta/models").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {
+                            "name": "models/gemini-2.0-flash",
+                            "supportedGenerationMethods": ["generateContent"],
+                        }
+                    ]
+                },
+            )
+        )
+        ok, detail = await self._provider().health()
+        assert ok, detail
+
+    async def test_is_reported_as_cloud(self) -> None:
+        caps = self._provider().capabilities()
+        assert caps.is_cloud is True
+        assert caps.streaming is True
+        # Function calling exists in this API but is not wired through the
+        # gateway's tool path, and claiming it would offer something inert.
+        assert caps.tools is False
+
+
+class TestEveryAdvertisedKindCanBeBuilt:
+    """`ProviderKind` and the gateway registry have to agree.
+
+    `llama_cpp` was an accepted kind with nothing behind it: the config
+    validated, then building the provider raised "Unknown provider kind", which
+    reads as a broken install rather than as a typo.
+    """
+
+    def test_registry_covers_every_provider_kind(self) -> None:
+        from typing import get_args
+
+        from jarvis.ai.gateway import REGISTRY
+        from jarvis.config.settings import ProviderKind
+
+        advertised = set(get_args(ProviderKind))
+        assert advertised <= set(REGISTRY), (
+            f"accepted by config but not buildable: {sorted(advertised - set(REGISTRY))}"
+        )
+
+    def test_every_kind_builds(self) -> None:
+        from typing import get_args
+
+        from jarvis.ai.gateway import build
+        from jarvis.config.settings import ProviderKind
+
+        for kind in get_args(ProviderKind):
+            provider = build(kind, ProviderSettings(kind=kind))
+            assert provider.capabilities().kind
+
+
+class TestTheShippedPresets:
+    """Every commented provider block in the default config must work.
+
+    A preset that does not parse, or names a `kind` that cannot be built, is
+    worse than no preset: it is copied verbatim from a file that looks
+    authoritative and then fails somewhere else entirely.
+    """
+
+    @staticmethod
+    def _uncommented() -> str:
+        """The default config with every commented-out line enabled."""
+        import re
+
+        from jarvis.config.settings import DEFAULT_CONFIG_TOML
+
+        out = []
+        for line in DEFAULT_CONFIG_TOML.splitlines():
+            # Only lines that are a commented-out setting or table header, not
+            # prose comments.
+            if re.match(r"^#\s*(\[|[a-z_]+\s*=)", line):
+                out.append(re.sub(r"^#\s?", "", line))
+            else:
+                out.append(line)
+        return "\n".join(out)
+
+    def test_every_preset_parses(self) -> None:
+        import tomllib
+
+        from jarvis.config.settings import Settings
+
+        settings = Settings(**tomllib.loads(self._uncommented()))
+        # Named rather than counted, so adding a preset without a test is caught.
+        assert {
+            "anthropic",
+            "openai",
+            "gemini",
+            "openrouter",
+            "groq",
+            "ollama",
+            "local",
+            "dev_echo",
+        } <= set(settings.ai.providers)
+
+    def test_every_preset_builds_a_working_provider(self) -> None:
+        import tomllib
+
+        from jarvis.ai.gateway import build
+        from jarvis.config.settings import Settings
+
+        settings = Settings(**tomllib.loads(self._uncommented()))
+        for name, cfg in settings.ai.providers.items():
+            provider = build(name, cfg)
+            caps = provider.capabilities()
+            assert caps.kind == cfg.kind, name
+            # Every cloud preset must report itself unconfigured rather than
+            # ready, since no key is stored — that is what makes the interface
+            # offer to add one instead of failing on first use.
+            if caps.is_cloud:
+                assert not caps.configured, f"{name} claims to be configured with no key"
+                assert "key" in caps.detail.lower(), name
+
+    def test_the_cloud_presets_stay_switched_off(self) -> None:
+        """Pasting a key into the config must not be enough to start sending
+        conversations off the machine; `allow_cloud` is a separate decision."""
+        import tomllib
+
+        from jarvis.config.settings import Settings
+
+        settings = Settings(**tomllib.loads(self._uncommented()))
+        assert settings.ai.allow_cloud is False
+        assert settings.ai.allow_cloud_content is False
+        assert settings.ai.default == "dev_echo"
+
+    async def test_a_cloud_preset_is_refused_while_allow_cloud_is_false(self) -> None:
+        """The privacy gate keys off `is_cloud`, so a new cloud adapter is
+        covered the moment it declares itself one. Asserted rather than assumed,
+        because the cost of being wrong is a conversation leaving the machine."""
+        import tomllib
+
+        from jarvis.ai.gateway import Gateway
+        from jarvis.ai.types import CompletionRequest, Message
+        from jarvis.config.settings import Settings
+        from jarvis.util.errors import JarvisError
+
+        data = tomllib.loads(self._uncommented())
+        data["ai"]["default"] = "gemini"
+        settings = Settings(**data)
+        assert settings.ai.allow_cloud is False
+
+        gateway = Gateway(settings)
+        with pytest.raises(JarvisError):
+            async for _ in gateway.stream(CompletionRequest(messages=[Message("user", "hello")])):
+                pass

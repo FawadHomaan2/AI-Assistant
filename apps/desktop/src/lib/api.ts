@@ -136,12 +136,28 @@ export interface VoiceComponent {
   downloadMb: number;
 }
 
+/**
+ * The microphone is reported apart from the models on purpose. A missing
+ * download is something this interface can offer to fix; no audio device is
+ * not, and showing both as "voice is not ready" sends people to the wrong
+ * place.
+ */
+export interface VoiceMicrophone {
+  available: boolean;
+  detail: string;
+  listening: boolean;
+  framesSeen: number;
+  framesDropped: number;
+}
+
 export interface VoiceStatus {
   ready: boolean;
   state: string;
   reason: string;
   components: VoiceComponent[];
   missing: string[];
+  microphone: VoiceMicrophone;
+  micScopeGranted: boolean;
 }
 
 export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
@@ -155,6 +171,14 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
       state: String(raw.state ?? 'off'),
       reason: String(raw.reason ?? ''),
       missing: (raw.missing as string[]) ?? [],
+      micScopeGranted: Boolean(raw.micScopeGranted),
+      microphone: {
+        available: Boolean((raw.microphone as Record<string, unknown>)?.available),
+        detail: String((raw.microphone as Record<string, unknown>)?.detail ?? ''),
+        listening: Boolean((raw.microphone as Record<string, unknown>)?.listening),
+        framesSeen: Number((raw.microphone as Record<string, unknown>)?.framesSeen ?? 0),
+        framesDropped: Number((raw.microphone as Record<string, unknown>)?.framesDropped ?? 0),
+      },
       components: ((raw.components as Record<string, unknown>[]) ?? []).map((c) => ({
         name: String(c.name),
         available: Boolean(c.available),
@@ -164,6 +188,14 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
       })),
     },
   };
+}
+
+export function startListening(): Promise<ApiResult<{ listening: boolean; state: string }>> {
+  return request('/voice/listen', { method: 'POST' });
+}
+
+export function stopListening(): Promise<ApiResult<{ listening: boolean; state: string }>> {
+  return request('/voice/stop', { method: 'POST' });
 }
 
 export interface BrowserStatus {

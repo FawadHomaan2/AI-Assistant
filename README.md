@@ -333,24 +333,29 @@ cd services/jarvis
 python3 scripts/check_contrast.py                  # WCAG AA, both themes
 ```
 
-### Updating
+### Downloading and updating
 
-The app can update itself, but **it is switched off until a signing key
-exists** — the repository ships none, and a placeholder key nobody generated
+Tagged releases are on the [releases page](https://github.com/FawadHomaan2/AI-Assistant/releases)
+with a permanent link, which a CI artifact is not — those expire and need a
+GitHub login.
+
+Installing a new build over an old one keeps everything in
+`%LOCALAPPDATA%\jarvis`: conversations, learned memory, the audit log,
+permissions, plugins and every downloaded model. Only the program is replaced.
+
+The app can also **update itself**, but that is switched off until a signing
+key exists — the repository ships none, and a placeholder key nobody generated
 would be worse than nothing. Settings → Updates says which state you are in,
-and an unconfigured build makes no network request looking for updates.
+and an unconfigured build makes no network request looking for updates. The
+update endpoint is already configured; a public key is the only missing piece.
 
-Until it is set up, updating means installing a new build over the old one.
-That keeps everything in `%LOCALAPPDATA%\jarvis`: conversations, learned
-memory, the audit log, permissions, plugins and every downloaded model. Only
-the program is replaced.
+`docs/UPDATES.md` has the setup: a keypair you generate on your own machine,
+two repository secrets, and a tag. Releasing works without it — a key only
+adds the in-app update. The update path has not been run end to end yet, and
+the doc says so.
 
 If you are running from source — which you must be, for voice — updating is
 `git pull` and `npm ci`. No reinstall.
-
-`docs/UPDATES.md` has the setup: a keypair you generate and keep, two
-repository secrets, and a tagged release. Nothing in it has been run end to
-end yet, and it says so.
 
 ### Build the installer (Windows only)
 ```powershell

@@ -68,12 +68,64 @@ windowed build on Windows has no stdout at all — the symptom is a core that
 appears to start and never answers. The shell spawns it with `CREATE_NO_WINDOW`,
 so no console window is ever visible.
 
-### Why it is ~50 MB and not ~300 MB
+### Why it is large, and what is in it
 
-The heavy optional dependencies are **excluded**: Whisper, Piper, ONNX Runtime,
-Playwright and the document readers. Each is a capability that already reports
-itself unavailable with a reason and an install command, so excluding one
-degrades a feature instead of crashing the core.
+The voice stack is bundled, and it dominates the download. Measured on a Linux
+build of the same spec, by package:
+
+| | Content |
+|---|---|
+| CTranslate2 (runs the Whisper model) | ~133 MB |
+| PyAV (ffmpeg bindings, imported by faster-whisper) | ~100 MB |
+| ONNX Runtime (wake word and the Piper voice) | ~92 MB |
+| Piper | ~60 MB |
+| SciPy and NumPy (openWakeWord's feature pipeline) | ~112 MB |
+
+That compresses to a one-file binary of 216 MB on Linux. **Windows is smaller:
+164 MB for the core and about 165 MB for the installer**, measured in CI — no
+uvloop, and leaner ffmpeg and CTranslate2 builds. Windows is the shipping
+target, so that is the number that counts.
+
+PyAV is the galling one: Jarvis feeds faster-whisper raw PCM frames and never
+decodes a media file, but `faster_whisper/__init__.py` imports `decode_audio` on
+its first line, so the ffmpeg bindings load whether or not anything uses them.
+
+**What is trimmed.** Piper ships a neural diacritiser per script that needs one,
+and they are not equally droppable: `piper/voice.py` imports Hebrew's inside the
+branch that uses it and Arabic's at module level. So Nakdimon (21 MB) is
+filtered out and a Hebrew Piper voice needs a source install, while Tashkeel
+stays — dropping it makes `import piper` fail and there is no spoken reply at
+all. That was the first attempt, and the self-check caught it.
+
+**What is still excluded.** Playwright, because it needs a browser engine rather
+than just a package — bundling the Python half would add weight without making
+web browsing work. And torch, which nothing uses: faster-whisper runs on
+CTranslate2.
+
+**What is not bundled at all: the models.** The wake word (~4 MB), the Piper
+voice (~62 MB) and Whisper (~74 MB) are downloaded on first use and verified
+against a recorded SHA-256, which is why the installer is smaller than the sum
+of what it can do.
+
+### The build checks what it actually bundled
+
+PyInstaller finds imports by scanning source, and several of these are loaded by
+entry point or by name at runtime, so a bundle can be missing one and still
+build, start and pass a smoke test — the feature is simply absent.
+
+Two real cases: the installer shipped for a release without `keyring`, so no API
+key could be stored; and `jarvis.tools.documents` loads its readers with
+`__import__(module)` where `module` is a variable, so `pypdf`, python-docx,
+openpyxl and python-pptx were installed for every build and bundled by none of
+them. The app reported "the 'pypdf' package is not installed" for a dependency
+that was.
+
+So the frozen binary is asked rather than trusted. `jarvis-core --selfcheck`
+prints a JSON line naming every optional package and whether it imports, and
+`scripts/build_core.py` fails the build when something importable in the build
+environment is missing from the bundle. The expected set is not written down: it
+is whatever the build environment has, so installing an extra is enough to
+require it, and dropping one leaves no stale assertion behind.
 
 ---
 

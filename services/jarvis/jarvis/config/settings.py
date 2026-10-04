@@ -65,6 +65,105 @@ class ProviderSettings(BaseModel):
         return v
 
 
+#: The services the Settings panel offers, as data rather than as prose.
+#:
+#: `DEFAULT_CONFIG_TOML` below carries the same list commented out, for someone
+#: editing the file by hand. This is the machine-readable half: the interface
+#: reads it from `GET /providers/presets` so adding a service is one entry here
+#: instead of an edit in the config, the panel and the documentation.
+#:
+#: `key_url` is where the service issues keys. Nothing is auto-filled from it
+#: and no request is made to it — it is a link for someone who does not have a
+#: key yet, which is otherwise the point where setting this up stalls.
+class ProviderPreset(BaseModel):
+    id: str
+    label: str
+    kind: ProviderKind
+    #: A starting point. Model names change faster than this file, so the panel
+    #: lets it be edited and `GET /providers/health` reports what the key reaches.
+    model: str = ""
+    base_url: str = ""
+    #: Name of the credential-store entry. Empty for services that need no key.
+    credential: str = ""
+    is_cloud: bool = True
+    key_url: str = ""
+    note: str = ""
+
+    @property
+    def needs_key(self) -> bool:
+        return bool(self.credential)
+
+
+PRESETS: tuple[ProviderPreset, ...] = (
+    ProviderPreset(
+        id="anthropic",
+        label="Claude",
+        kind="anthropic",
+        model="claude-opus-5-5",
+        credential="jarvis/anthropic",
+        key_url="https://console.anthropic.com/settings/keys",
+        note="Also claude-sonnet-5-5 and claude-haiku-4-5.",
+    ),
+    ProviderPreset(
+        id="openai",
+        label="ChatGPT",
+        kind="openai_compat",
+        model="gpt-4o",
+        base_url="https://api.openai.com/v1",
+        credential="jarvis/openai",
+        key_url="https://platform.openai.com/api-keys",
+    ),
+    ProviderPreset(
+        id="gemini",
+        label="Gemini",
+        kind="google",
+        model="gemini-2.0-flash",
+        credential="jarvis/gemini",
+        key_url="https://aistudio.google.com/apikey",
+        note="Health check lists the models your key actually reaches.",
+    ),
+    ProviderPreset(
+        id="openrouter",
+        label="OpenRouter",
+        kind="openai_compat",
+        model="anthropic/claude-opus-4.1",
+        base_url="https://openrouter.ai/api/v1",
+        credential="jarvis/openrouter",
+        key_url="https://openrouter.ai/keys",
+        note="One key, many vendors' models. The closest thing to trying several "
+        "without an account for each.",
+    ),
+    ProviderPreset(
+        id="groq",
+        label="Groq",
+        kind="openai_compat",
+        model="llama-3.3-70b-versatile",
+        base_url="https://api.groq.com/openai/v1",
+        credential="jarvis/groq",
+        key_url="https://console.groq.com/keys",
+    ),
+    ProviderPreset(
+        id="ollama",
+        label="Ollama (on this machine)",
+        kind="ollama",
+        model="qwen2.5:14b-instruct",
+        base_url="http://127.0.0.1:11434",
+        is_cloud=False,
+        key_url="https://ollama.com/download",
+        note="No key and no network. The only setup where nothing you say leaves the machine.",
+    ),
+    ProviderPreset(
+        id="local",
+        label="Local OpenAI-compatible server",
+        kind="openai_compat",
+        model="local-model",
+        base_url="http://127.0.0.1:1234/v1",
+        is_cloud=False,
+        note="LM Studio, vLLM, or llama.cpp's server. Point base_url at it.",
+    ),
+)
+
+
 class AISettings(BaseModel):
     # The provider used when a job class has no specific override.
     default: str = "dev_echo"
@@ -107,6 +206,10 @@ class LoggingSettings(BaseModel):
 
 
 class VoiceSettings(BaseModel):
+    #: Listen for the wake word from launch, rather than waiting for the
+    #: microphone button every session. Acted on by
+    #: `jarvis.app.start_listening_if_asked`, which also requires the
+    #: `mic.listen` permission — this flag alone cannot open a microphone.
     enabled: bool = False
     wake_word: str = "hey_jarvis"
     push_to_talk: bool = True
@@ -290,6 +393,13 @@ kind = "dev_echo"
 # credential = "jarvis/local"             # omit if the endpoint needs no key
 
 [voice]
+# Listen for the wake word from the moment Jarvis starts, with no button to
+# press each session. This is the one setting that lets the microphone open on
+# its own, so it is off until you say otherwise — and it is not enough by
+# itself: the 'mic.listen' permission is required too, so turning this on
+# cannot start recording on a machine where that was never granted.
+#
+# Settings -> Voice is the same switch.
 enabled = false
 wake_word = "hey_jarvis"
 

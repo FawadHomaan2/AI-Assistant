@@ -231,9 +231,37 @@ mod tests {
         );
         assert!(!is_usable_updater_config(updater));
 
+        // The endpoint is not a secret and ships filled in, so adding updates
+        // is one paste rather than two. Asserted so it is not quietly dropped:
+        // with it missing, filling in only the key would still read as
+        // unconfigured and the reason would not be obvious.
+        let endpoints = updater["endpoints"].as_array().expect("endpoints array");
+        assert_eq!(endpoints.len(), 1, "expected exactly the releases endpoint");
+        let endpoint = endpoints[0].as_str().unwrap();
+        assert!(
+            endpoint.starts_with("https://"),
+            "an update endpoint must be TLS"
+        );
+        assert!(
+            endpoint.ends_with("/latest.json"),
+            "the endpoint must point at the manifest, not the release page"
+        );
+
         // Downgrade protection has to be on from the first release. Enabling it
         // later rejects every release signed before the CLI recorded a version.
         assert_eq!(updater["requireSignedVersion"], true);
         assert_eq!(updater["allowDowngrades"], false);
+    }
+
+    #[test]
+    fn filling_in_only_the_key_completes_the_configuration() {
+        // The handoff this is built around: the endpoint ships filled in, so
+        // pasting a public key is the whole remaining step.
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let mut updater = conf["plugins"]["updater"].clone();
+        updater["pubkey"] =
+            serde_json::json!("dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk");
+        assert!(is_usable_updater_config(&updater));
     }
 }

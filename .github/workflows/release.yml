@@ -1,41 +1,59 @@
 name: Release
 
-# Publishes a signed installer and the manifest the in-app updater reads.
+# Publishes an installer on a version tag, and gives it a permanent download
+# link — which a workflow artifact is not: those expire and need a GitHub
+# login.
 #
-# Fires on a version tag, never on a push to a branch: a release is a
-# deliberate act, and the updater points every installed copy of Jarvis at
-# whatever this produces.
+# **Signing is optional.** A release and an update are different things, and
+# conflating them was a mistake in the first version of this file: it refused
+# to publish at all without a signing key, which meant no download link until
+# one existed. A plain download needs no signature. The in-app updater does.
 #
-# Requires two repository secrets, both from `npm run tauri signer generate`:
+# So:
+#
+#   no signing key   → installer published. Download and install it by hand;
+#                      the updater stays switched off and says so.
+#   signing key set  → installer published, signed, with `latest.json` beside
+#                      it, and every installed copy sees the update.
+#
+# To get the second, generate a keypair with `npm run tauri signer generate`
+# and add two repository secrets:
 #
 #   TAURI_SIGNING_PRIVATE_KEY           the private key's contents
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  the passphrase set when generating it
 #
-# Without them this job fails rather than publishing an unsigned build. An
-# unsigned release is worse than no release here: the updater would reject it,
-# so it would look published and be uninstallable.
+# then put the public key in `apps/desktop/src-tauri/tauri.conf.json`. The
+# endpoint there is already filled in. See docs/UPDATES.md.
 #
 # `latest.json` is written by the step below rather than by a third-party
-# action, so the only things with a hand on the release are GitHub's own
-# actions and this file.
+# action, so the only things with a hand on a release are GitHub's own actions
+# and this file.
 
 on:
   push:
     tags:
       - 'v*'
-  # Lets a failed publish be retried without moving the tag.
+  # Two jobs in one: retrying a failed publish without moving the tag, and
+  # publishing a tag that does not exist yet. The second matters because
+  # creating a tag needs push access to the repository, while running this
+  # workflow needs only the ability to start it — the release step creates the
+  # tag at the dispatched commit using the workflow's own token.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to build and publish'
+        description: 'Tag to publish (created at this ref if it does not exist)'
         required: true
+      move_tag:
+        description: 'Repoint the tag if it already exists elsewhere'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Signed Windows installer
+    name: Windows installer
     runs-on: windows-latest
     defaults:
       run:
@@ -43,7 +61,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          # Not the `tag` input: on a dispatch that tag may not exist yet, and
+          # checking it out would fail before anything is built. `github.ref` is
+          # the tag on a tag push and the dispatched branch otherwise — the
+          # commit to build, either way.
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -59,20 +81,22 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      # Refuse early and in plain words. Discovering a missing key after a
-      # fifteen-minute build, from a Tauri error about signing, is a worse
-      # five minutes than this check.
-      - name: Check the signing key is present
+      # Decided once, up front, so every later step agrees about it and the
+      # release notes can say which kind of release this is.
+      - name: Decide whether this release can be signed
+        id: signing
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -z "$KEY" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set. Generate a keypair with"
-            echo "::error::'npm run tauri signer generate', add the private key and its"
-            echo "::error::password as repository secrets, and put the public key in"
-            echo "::error::apps/desktop/src-tauri/tauri.conf.json. See docs/UPDATES.md."
-            exit 1
+          if [ -n "$KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "A signing key is present: this release will carry update artifacts."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No TAURI_SIGNING_PRIVATE_KEY, so this release is a plain"
+            echo "::notice::download: no signature and no latest.json, and the in-app"
+            echo "::notice::updater stays switched off. See docs/UPDATES.md to enable it."
           fi
 
       # The tag and the version in tauri.conf.json have to agree: the updater
@@ -93,7 +117,7 @@ jobs:
       - name: Build the core sidecar
         working-directory: services/jarvis
         run: |
-          pip install -e ".[documents]"
+          pip install -e ".[documents,secrets,voice]"
           pip install pyinstaller
       - name: Freeze and smoke-test the core
         working-directory: .
@@ -101,16 +125,41 @@ jobs:
 
       - run: npm ci
 
-      # `createUpdaterArtifacts` is passed here rather than committed, because
-      # setting it in tauri.conf.json makes every build require a signing key —
-      # including CI's ordinary Windows build and anyone building from source.
-      - name: Build the installer and sign the update artifacts
+      # Two build steps rather than one with a conditional argument, because
+      # `createUpdaterArtifacts` makes the build *require* a key — passing it
+      # without one fails, and passing it conditionally inside one shell line
+      # is where this gets quietly wrong.
+      - name: Build the installer (signed, with update artifacts)
+        if: steps.signing.outputs.enabled == 'true'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
+      - name: Build the installer (unsigned)
+        if: steps.signing.outputs.enabled != 'true'
+        run: npm run tauri build
+
+      # `fail_on_unmatched_files: false` below is needed because two of the
+      # three publish patterns match nothing on an unsigned build — which also
+      # removes the safety net from the installer itself. Without this check, a
+      # bundler that named the file something other than `*-setup.exe` would
+      # publish a release with no assets at all: a download link that hands
+      # someone nothing, and no failed job to say so.
+      - name: Check the installer was produced
+        shell: bash
+        run: |
+          BUNDLE=src-tauri/target/release/bundle/nsis
+          if ! ls "$BUNDLE"/*-setup.exe >/dev/null 2>&1; then
+            echo "::error::No *-setup.exe in $BUNDLE, so there is nothing to publish."
+            echo "Contents of the bundle directory:"
+            ls -la "$BUNDLE" 2>/dev/null || echo "(the directory does not exist)"
+            exit 1
+          fi
+          echo "installer: $(ls "$BUNDLE"/*-setup.exe)"
+
       - name: Write latest.json
+        if: steps.signing.outputs.enabled == 'true'
         shell: bash
         env:
           REPO: ${{ github.repository }}
@@ -122,12 +171,12 @@ jobs:
           INSTALLER=$(ls "$BUNDLE"/*-setup.exe | head -1)
           SIGFILE="${INSTALLER}.sig"
           if [ ! -f "$SIGFILE" ]; then
-            echo "::error::No signature beside $INSTALLER. The build did not sign it."
+            echo "::error::No signature beside $INSTALLER although a key was set."
             exit 1
           fi
 
-          # The signature is read from the .sig file rather than recomputed, so
-          # the manifest describes the artifact that was actually built.
+          # Read from the .sig rather than recomputing, so the manifest
+          # describes the artifact that was actually built.
           SIG=$(cat "$SIGFILE")
           NAME=$(basename "$INSTALLER")
 
@@ -145,7 +194,110 @@ jobs:
           }
           JSON
           echo "wrote latest.json for $NAME"
-          cat "$BUNDLE/latest.json"
+
+      # Created here rather than left to the release action, which creates a
+      # missing tag at `target_commitish` — defaulting to the repository's
+      # default branch, not the ref it was dispatched from. That published
+      # v0.2.0 pointing at a commit declaring version 0.1.0, with the code that
+      # was actually built not in the tag's history at all. The binary was
+      # right and the tag was wrong, and nothing in the job noticed.
+      - name: Create or check the tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          MOVE: ${{ github.event.inputs.move_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+
+          # `gh api` prints its error body to STDOUT, not stderr, so a 404 for a
+          # tag that does not exist is captured by the command substitution just
+          # like a sha would be — and `|| echo ""` never runs, because the
+          # substitution already succeeded in capturing it. The first version of
+          # this step therefore read the 404 JSON as the tag's current commit and
+          # refused to publish, reporting that v0.2.1 "already exists at
+          # {"message":"Not Found"...}".
+          #
+          # So the result is checked for shape rather than trusted: anything that
+          # is not a 40-character hex sha means the tag is not there.
+          EXISTING=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          if ! printf '%s' "$EXISTING" | grep -qE '^[0-9a-f]{40}$'; then
+            EXISTING=""
+          fi
+
+          if [ -z "$EXISTING" ]; then
+            gh api -X POST "repos/$REPO/git/refs" \
+              -f "ref=refs/tags/$TAG" -f "sha=$SHA" >/dev/null
+            echo "created $TAG at $SHA"
+          elif [ "$EXISTING" = "$SHA" ]; then
+            echo "$TAG already points at $SHA"
+          elif [ "$MOVE" = "true" ]; then
+            # Explicit, never the default: moving a tag someone may already
+            # have fetched is not something to do by accident.
+            gh api -X PATCH "repos/$REPO/git/refs/tags/$TAG" \
+              -F force=true -f "sha=$SHA" >/dev/null
+            echo "::warning::moved $TAG from $EXISTING to $SHA"
+          else
+            echo "::error::$TAG already exists at $EXISTING, but this build is $SHA."
+            echo "::error::Re-run with move_tag enabled to repoint it, or use a new tag."
+            exit 1
+          fi
+
+      # Said on the release itself, so someone landing on the page knows
+      # whether this one can be installed over an older copy automatically.
+      - name: Compose the release notes
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES'
+            echo '## Install'
+            echo
+            echo 'Download the `.exe` below and run it. It installs per-user into'
+            echo '`%LOCALAPPDATA%\Programs\Jarvis` — no administrator rights and no UAC prompt.'
+            echo
+            echo 'The build is **unsigned**, so SmartScreen will warn about an unknown'
+            echo 'publisher: **More info → Run anyway**. That is the missing code-signing'
+            echo 'certificate, not a problem with the build.'
+            echo
+            echo 'Installing over an existing copy keeps everything in `%LOCALAPPDATA%\jarvis`:'
+            echo 'conversations, learned memory, the audit log, permissions, plugins and every'
+            echo 'downloaded model. Only the program is replaced.'
+            echo
+            if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
+              echo '## Updating'
+              echo
+              echo 'This release carries `latest.json` and a signature, so installed copies'
+              echo 'will offer it under **Settings → Updates**.'
+            else
+              echo '## Updating'
+              echo
+              echo 'This release is **not signed for the in-app updater**, so installed copies'
+              echo 'will not offer it — install it by hand. Setting up automatic updates needs'
+              echo 'a signing keypair; see `docs/UPDATES.md`.'
+            fi
+            echo
+            echo '## Voice'
+            echo
+            echo '"Hey Jarvis" works from this installer. The wake word, speech-to-text and'
+            echo 'the spoken reply are all included — earlier builds excluded them and told you'
+            echo 'to clone the repository instead.'
+            echo
+            echo 'The **models** are downloaded on first use, not bundled: the wake word is'
+            echo 'about 4 MB, the voice 62 MB and the speech model 74 MB. Settings shows what is'
+            echo 'missing and fetches it, and each download is checked against a known SHA-256.'
+            echo
+            echo 'Voice is **off until you turn it on**. Settings has one switch for it:'
+            echo '*Listen for "Hey Jarvis" at startup*, which makes the wake word live from'
+            echo 'the moment Jarvis starts rather than needing a button press each session.'
+            echo
+            echo 'It needs the microphone permission as well, asked for once and revocable.'
+            echo 'Both are required, so neither one alone can open a microphone — and the'
+            echo 'emergency stop always closes it.'
+            echo RELEASE_NOTES
+          } >> "$GITHUB_OUTPUT"
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
@@ -155,8 +307,45 @@ jobs:
           # and a draft's assets are not public, so the manifest would 404 for
           # everyone it is meant to serve.
           draft: false
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
+          # The signature and manifest are only produced for a signed build, so
+          # two of these patterns match nothing on an unsigned one. Set
+          # explicitly rather than relying on the action's default.
+          fail_on_unmatched_files: false
+          # Without this the action creates a missing tag on the default
+          # branch. Harmless on a tag push, where the tag already exists; the
+          # step above makes it a no-op either way, and this closes the gap if
+          # that step is ever reordered.
+          target_commitish: ${{ github.sha }}
           files: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
             apps/desktop/src-tauri/target/release/bundle/nsis/latest.json
+
+      # The check that was missing. "Does the tag match the version in the
+      # checkout" is about intent; this is about the result, and it is the one
+      # that catches a tag landing on a different commit than the installer was
+      # built from.
+      - name: Check the published tag points at what was built
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          POINTS_AT=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          # Shape-checked for the same reason as the step above: an error body on
+          # stdout would otherwise be compared against the sha and reported as a
+          # mismatch, which names the wrong problem.
+          if ! printf '%s' "$POINTS_AT" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Could not read the tag $TAG after publishing: $POINTS_AT"
+            exit 1
+          fi
+          if [ "$POINTS_AT" != "$SHA" ]; then
+            echo "::error::$TAG points at $POINTS_AT but the installer was built from $SHA."
+            echo "::error::Anyone checking out the tag would not get the code they downloaded."
+            exit 1
+          fi
+          echo "$TAG points at $SHA, which is what was built."

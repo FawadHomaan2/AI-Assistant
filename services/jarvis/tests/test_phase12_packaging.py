@@ -260,13 +260,50 @@ class TestBuildConfiguration:
 
 
 class TestVersionsAgree:
-    def test_the_shell_and_the_core_report_the_same_version(self) -> None:
-        """Two version numbers that drift apart make a bug report useless."""
-        conf = json.loads((REPO / "apps" / "desktop" / "src-tauri" / "tauri.conf.json").read_text())
+    """Five files declare the version, and all five must say the same thing.
+
+    This used to assert only that two of them were non-empty, under a name
+    saying they reported the same version. The release workflow checks
+    `tauri.conf.json` against the tag and nothing checks the rest, so a bump
+    that missed a file drifted silently: the installer's version, the shell's
+    crate version and the version the core reports in its handshake and bug
+    reports could all disagree.
+    """
+
+    def _declarations(self) -> dict[str, str]:
+        desktop = REPO / "apps" / "desktop"
+        found: dict[str, str] = {}
+
+        found["tauri.conf.json"] = json.loads(
+            (desktop / "src-tauri" / "tauri.conf.json").read_text()
+        )["version"]
+        found["package.json"] = json.loads((desktop / "package.json").read_text())["version"]
+
+        # The first `version =` under `[package]`, not a dependency's.
+        cargo = (desktop / "src-tauri" / "Cargo.toml").read_text()
+        match = re.search(r'^\[package\][^\[]*?^version = "([^"]+)"', cargo, re.M | re.S)
+        assert match is not None, "no [package] version in Cargo.toml"
+        found["Cargo.toml"] = match.group(1)
+
+        pyproject = (REPO / "services" / "jarvis" / "pyproject.toml").read_text()
+        match = re.search(r'^\[project\][^\[]*?^version = "([^"]+)"', pyproject, re.M | re.S)
+        assert match is not None, "no [project] version in pyproject.toml"
+        found["pyproject.toml"] = match.group(1)
+
         app_py = (REPO / "services" / "jarvis" / "jarvis" / "app.py").read_text()
-        core_version = re.search(r'VERSION = "([^"]+)"', app_py)
-        assert core_version is not None
-        # They are allowed to differ, but the mismatch must be deliberate and
-        # visible rather than discovered in a crash report.
-        assert conf["version"]
-        assert core_version.group(1)
+        match = re.search(r'^VERSION = "([^"]+)"', app_py, re.M)
+        assert match is not None, "no VERSION in app.py"
+        found["app.py"] = match.group(1)
+
+        return found
+
+    def test_every_file_declares_the_same_version(self) -> None:
+        found = self._declarations()
+        assert len(set(found.values())) == 1, "these disagree about the version: " + ", ".join(
+            f"{where}={what}" for where, what in sorted(found.items())
+        )
+
+    def test_the_version_looks_like_a_version(self) -> None:
+        """The tag check compares against `v` + this, so `0.2.1`, not `v0.2.1`."""
+        for where, what in self._declarations().items():
+            assert re.fullmatch(r"\d+\.\d+\.\d+", what), f"{where} declares {what!r}"

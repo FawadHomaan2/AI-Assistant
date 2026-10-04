@@ -47,7 +47,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default=None, help="database path (':memory:' for ephemeral)")
     parser.add_argument("--log-level", default=None)
     parser.add_argument("--print-token", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--selfcheck",
+        action="store_true",
+        help="print which optional features this build has, as JSON, and exit",
+    )
     args = parser.parse_args(argv)
+
+    if args.selfcheck:
+        # Before `ensure_dirs` and before any config is written: this answers
+        # "what is in this binary", and it is asked of a freshly built one by
+        # `scripts/build_core.py`, which should not leave a data directory
+        # behind on the build machine.
+        from jarvis.diagnostics import bundle
+
+        sys.stdout.write(json.dumps({"version": VERSION, **bundle.report()}) + "\n")
+        sys.stdout.flush()
+        return 0
 
     paths.ensure_dirs()
     settings_module.write_default_config()

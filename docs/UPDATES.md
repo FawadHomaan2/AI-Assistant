@@ -9,11 +9,22 @@ reason the model catalogue leaves an unverified checksum empty.
 With it off, Settings → Updates says so, and the app makes no network request
 looking for updates at all.
 
-> **Nothing here has been run end to end.** The code compiles, its
+**Releasing does not need a key.** A download and an update are different
+things, and the release workflow treats them that way:
+
+| | Installer published | In-app update |
+|---|---|---|
+| No signing key | yes, with a permanent link | no — install by hand |
+| Signing key set | yes, signed | yes |
+
+So `v0.2.0` ships as an ordinary download today. Adding the key is what makes
+`v0.2.1` arrive by itself.
+
+> **The update path has not been run end to end.** The code compiles, its
 > configuration check is unit-tested, and the workflow's YAML is valid — but no
-> release has been published, so no update has ever been downloaded, verified
-> or installed. Publishing the first one is what proves it. The failure modes
-> most likely to bite are listed at the end.
+> signed release exists, so no update has ever been downloaded, verified or
+> installed. Publishing the first signed one is what proves it. The failure
+> modes most likely to bite are listed at the end.
 
 ---
 
@@ -26,6 +37,39 @@ artifact it will accept.
 So: generate it yourself, on your own machine. Don't let anyone generate it for
 you and hand it over — including me. A key that has passed through someone
 else's computer is a key they have.
+
+## One command
+
+```powershell
+python scripts/setup_updates.py
+```
+
+That is the whole setup. It generates the keypair, writes the **public** half
+into `tauri.conf.json`, and offers to set the two repository secrets through
+`gh` if you have it signed in. The passphrase is prompted for by the Tauri CLI
+and the private key is piped to `gh` from the file, so neither is printed,
+copied, or passed on a command line.
+
+The private key goes to `~/.tauri/jarvis.key` — outside the repository on
+purpose, since a key inside a working tree is one `git add -A` away from being
+published. Pass `--key-path` to put it elsewhere.
+
+Two other modes:
+
+```powershell
+python scripts/setup_updates.py --check                 # report, change nothing
+python scripts/setup_updates.py --public-key <key|path> # only write the key
+```
+
+The second is the one to use if you already have a keypair, or generated it on
+a different machine.
+
+It refuses a private key pasted where the public one belongs, a truncated
+paste, and a config whose endpoint has been removed — each of which otherwise
+surfaces much later as "signature verification failed" or as an updater that
+silently considers itself switched off.
+
+## Or by hand
 
 ```powershell
 cd apps/desktop
@@ -45,8 +89,11 @@ It asks for a passphrase, then prints the **public** key and writes the
 
 ## Wiring it up
 
-**1. Put the public key and the endpoint in the config.**
-`apps/desktop/src-tauri/tauri.conf.json`:
+The steps the script does for you, for when you want to do them yourself.
+
+**1. Paste the public key.** The endpoint is already filled in, so this is the
+only edit. In `apps/desktop/src-tauri/tauri.conf.json`, replace the empty
+`pubkey`:
 
 ```json
 "plugins": {
@@ -63,7 +110,8 @@ It asks for a passphrase, then prints the **public** key and writes the
 
 Both halves are required. The app treats a key with no endpoint, or an endpoint
 with no key, as not configured — an endpoint alone would mean downloading
-something it cannot verify.
+something it cannot verify. The key is compiled into the build, so a rebuild is
+what makes the change take effect.
 
 **2. Add two repository secrets** under Settings → Secrets and variables →
 Actions:
@@ -75,7 +123,10 @@ Actions:
 
 **3. Release.** The version in `tauri.conf.json` and the tag have to agree; the
 workflow refuses otherwise, because a mismatch either offers an update that
-installs the same version or hides one that exists.
+installs the same version or hides one that exists. Four files carry the
+version and all four should match — `tauri.conf.json`, `package.json`,
+`src-tauri/Cargo.toml`, and the core's `pyproject.toml`; only the first is
+checked against the tag.
 
 ```powershell
 # bump "version" in apps/desktop/src-tauri/tauri.conf.json first
@@ -84,9 +135,16 @@ git tag v0.2.0
 git push origin main --tags
 ```
 
-`.github/workflows/release.yml` then builds the core, builds a signed
-installer, writes `latest.json`, and publishes a GitHub Release with all three.
-Installed copies see it on the next check.
+`.github/workflows/release.yml` then builds the core and the installer, signs
+it and writes `latest.json` if a key is set, and publishes a GitHub Release.
+The release notes say which kind it is, so someone landing on the page knows
+whether it can install over an older copy by itself.
+
+**A key added later does not retro-sign anything.** Releases published before
+it stay plain downloads, and installed copies of those builds have no public
+key compiled in, so they will never offer an update either. The first build
+that can update itself is the first one built *after* the key is in the config
+— which is why doing this before shipping widely is worth the half hour.
 
 ---
 

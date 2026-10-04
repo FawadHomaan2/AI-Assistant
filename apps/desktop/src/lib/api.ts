@@ -112,6 +112,155 @@ export async function providers(): Promise<ApiResult<ProviderInfo[]>> {
   };
 }
 
+/** A service the Settings panel can set up, as the core describes it. */
+export interface ProviderPreset {
+  id: string;
+  label: string;
+  kind: string;
+  model: string;
+  baseUrl: string;
+  credential: string;
+  isCloud: boolean;
+  needsKey: boolean;
+  keyUrl: string;
+  note: string;
+}
+
+/**
+ * The services on offer, served by the core rather than listed here.
+ *
+ * Adding one is then a single entry in `jarvis.config.settings.PRESETS`, instead
+ * of an edit in the core, this file and the panel that would drift apart.
+ */
+export async function providerPresets(): Promise<ApiResult<ProviderPreset[]>> {
+  const res = await request<{ presets: Record<string, unknown>[] }>('/providers/presets');
+  if (!res.ok) return res;
+  return {
+    ok: true,
+    value: (res.value.presets ?? []).map((p) => ({
+      id: String(p.id),
+      label: String(p.label),
+      kind: String(p.kind),
+      model: String(p.model ?? ''),
+      baseUrl: String(p.base_url ?? ''),
+      credential: String(p.credential ?? ''),
+      isCloud: Boolean(p.is_cloud),
+      needsKey: Boolean(p.needs_key),
+      keyUrl: String(p.key_url ?? ''),
+      note: String(p.note ?? ''),
+    })),
+  };
+}
+
+export interface ProviderDraft {
+  name: string;
+  kind: string;
+  model?: string;
+  baseUrl?: string;
+  credential?: string;
+  /** Stored in the OS credential store, never in config.toml. Optional. */
+  key?: string;
+}
+
+/** Add or replace a provider, optionally storing its key in the same call. */
+export function addProvider(draft: ProviderDraft): Promise<ApiResult<{ providers: unknown[] }>> {
+  return request('/providers', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: draft.name,
+      kind: draft.kind,
+      model: draft.model ?? '',
+      base_url: draft.baseUrl ?? '',
+      credential: draft.credential ?? '',
+      ...(draft.key ? { key: draft.key } : {}),
+    }),
+  });
+}
+
+export function removeProvider(
+  name: string,
+): Promise<ApiResult<{ removed: boolean; keyRemoved: boolean; default: string }>> {
+  return request(`/providers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
+/** Store an API key. The key is never read back — Settings shows "configured". */
+export function setProviderKey(
+  name: string,
+  key: string,
+): Promise<ApiResult<{ configured: boolean }>> {
+  return request(`/providers/${encodeURIComponent(name)}/credential`, {
+    method: 'PUT',
+    body: JSON.stringify({ key }),
+  });
+}
+
+export function clearProviderKey(
+  name: string,
+): Promise<ApiResult<{ configured: boolean; removed: boolean }>> {
+  return request(`/providers/${encodeURIComponent(name)}/credential`, { method: 'DELETE' });
+}
+
+export interface AiState {
+  default: string;
+  allowCloud: boolean;
+  allowCloudContent: boolean;
+  credentialStore: { available: boolean; backend: string; detail: string };
+}
+
+/** The provider in use and the two cloud flags, for rendering the panel. */
+export async function aiState(): Promise<ApiResult<AiState>> {
+  const res = await request<Record<string, unknown>>('/ai');
+  if (!res.ok) return res;
+  const store = (res.value.credential_store ?? {}) as Record<string, unknown>;
+  return {
+    ok: true,
+    value: {
+      default: String(res.value.default ?? ''),
+      allowCloud: Boolean(res.value.allow_cloud),
+      allowCloudContent: Boolean(res.value.allow_cloud_content),
+      credentialStore: {
+        available: Boolean(store.available),
+        backend: String(store.backend ?? 'unknown'),
+        detail: String(store.detail ?? ''),
+      },
+    },
+  };
+}
+
+export interface AiSettings {
+  default?: string;
+  allowCloud?: boolean;
+  allowCloudContent?: boolean;
+}
+
+/**
+ * Which provider is in use, and whether cloud models may be used at all.
+ *
+ * Deliberately separate from storing a key: a key kept for later must not start
+ * sending conversations off the machine by itself.
+ */
+export function setAiSettings(
+  next: AiSettings,
+): Promise<ApiResult<{ default: string; allow_cloud: boolean; allow_cloud_content: boolean }>> {
+  return request('/ai', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...(next.default === undefined ? {} : { default: next.default }),
+      ...(next.allowCloud === undefined ? {} : { allow_cloud: next.allowCloud }),
+      ...(next.allowCloudContent === undefined
+        ? {}
+        : { allow_cloud_content: next.allowCloudContent }),
+    }),
+  });
+}
+
+/** Ask each configured provider whether its key and model actually work. */
+export async function providerHealth(): Promise<
+  ApiResult<Record<string, { ok: boolean; detail: string }>>
+> {
+  return request('/providers/health');
+}
+
 export function createSession(): Promise<ApiResult<{ id: string }>> {
   return request('/sessions', { method: 'POST' });
 }
@@ -158,6 +307,8 @@ export interface VoiceStatus {
   missing: string[];
   microphone: VoiceMicrophone;
   micScopeGranted: boolean;
+  /** `[voice]` from config.toml. `enabled` means "listen from launch". */
+  settings: { enabled: boolean; wakeWord: string; pushToTalk: boolean };
 }
 
 export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
@@ -172,6 +323,11 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
       reason: String(raw.reason ?? ''),
       missing: (raw.missing as string[]) ?? [],
       micScopeGranted: Boolean(raw.micScopeGranted),
+      settings: {
+        enabled: Boolean((raw.settings as Record<string, unknown>)?.enabled),
+        wakeWord: String((raw.settings as Record<string, unknown>)?.wakeWord ?? 'hey_jarvis'),
+        pushToTalk: Boolean((raw.settings as Record<string, unknown>)?.pushToTalk),
+      },
       microphone: {
         available: Boolean((raw.microphone as Record<string, unknown>)?.available),
         detail: String((raw.microphone as Record<string, unknown>)?.detail ?? ''),
@@ -186,6 +342,48 @@ export async function voiceStatus(): Promise<ApiResult<VoiceStatus>> {
         model: String(c.model ?? ''),
         downloadMb: Number(c.downloadMb ?? 0),
       })),
+    },
+  };
+}
+
+export interface VoiceSettingsReply {
+  enabled: boolean;
+  wakeWord: string;
+  pushToTalk: boolean;
+  needsMicPermission: boolean;
+  listening: boolean;
+}
+
+/**
+ * Change the voice settings, including listening from launch.
+ *
+ * `enabled` is what makes the wake word behave like one: on, Jarvis listens
+ * from the moment it starts rather than waiting for a button every session. It
+ * is not sufficient on its own — `mic.listen` is still required — and the reply
+ * says so through `needsMicPermission`.
+ */
+export async function setVoiceSettings(next: {
+  enabled?: boolean;
+  wakeWord?: string;
+  pushToTalk?: boolean;
+}): Promise<ApiResult<VoiceSettingsReply>> {
+  const res = await request<Record<string, unknown>>('/voice/settings', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...(next.enabled === undefined ? {} : { enabled: next.enabled }),
+      ...(next.wakeWord === undefined ? {} : { wake_word: next.wakeWord }),
+      ...(next.pushToTalk === undefined ? {} : { push_to_talk: next.pushToTalk }),
+    }),
+  });
+  if (!res.ok) return res;
+  return {
+    ok: true,
+    value: {
+      enabled: Boolean(res.value.enabled),
+      wakeWord: String(res.value.wakeWord ?? ''),
+      pushToTalk: Boolean(res.value.pushToTalk),
+      needsMicPermission: Boolean(res.value.needsMicPermission),
+      listening: Boolean(res.value.listening),
     },
   };
 }

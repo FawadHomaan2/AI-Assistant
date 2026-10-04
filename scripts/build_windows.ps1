@@ -17,13 +17,20 @@
 .PARAMETER SkipTests
     Skip the test suites. Not for a release build.
 
+.PARAMETER SkipDeps
+    Reuse the installed Python packages. Only for iterating: the installer's
+    features are whatever is installed when the core is frozen, so skipping
+    this on a fresh environment produces a build missing voice and the
+    document readers.
+
 .EXAMPLE
     pwsh -File scripts/build_windows.ps1
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipCore,
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$SkipDeps
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,7 +63,27 @@ See docs/PACKAGING.md.
 '@
 }
 
-# ── 1. Frontend dependencies ─────────────────────────────────────────────
+# ── 1. Core dependencies ─────────────────────────────────────────────────
+# Installed here, not assumed. The README's own setup is `.[dev,secrets]`,
+# which has neither the voice stack nor the document readers — so following it
+# and then running this script produced an installer that silently lacked both.
+# These are the extras the shipped installer carries, and CI installs the same
+# set, so a local build and a release build contain the same features.
+#
+# `build_core.py` asks the frozen binary what it ended up with, and the answer
+# is only as good as what was installed to begin with.
+if (-not $SkipDeps) {
+    Step 'Installing core dependencies (including the voice stack)'
+    Push-Location $core
+    try {
+        & python -m pip install -e '.[dev,documents,secrets,voice]'
+        if ($LASTEXITCODE -ne 0) { throw 'Installing the core dependencies failed.' }
+        & python -m pip install pyinstaller
+        if ($LASTEXITCODE -ne 0) { throw 'Installing PyInstaller failed.' }
+    } finally { Pop-Location }
+}
+
+# ── 2. Frontend dependencies ─────────────────────────────────────────────
 # Before the tests, not after: on a clean checkout there is no node_modules, so
 # `npm test` fails with "vitest is not recognised" and the old ordering reported
 # that as a test failure, which sent you looking at the tests instead of at the
@@ -68,7 +95,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
 } finally { Pop-Location }
 
-# ── 2. Tests before artefacts ────────────────────────────────────────────
+# ── 3. Tests before artefacts ────────────────────────────────────────────
 if (-not $SkipTests) {
     Step 'Running the core tests'
     Push-Location $core
@@ -85,7 +112,7 @@ if (-not $SkipTests) {
     } finally { Pop-Location }
 }
 
-# ── 3. The core sidecar ──────────────────────────────────────────────────
+# ── 4. The core sidecar ──────────────────────────────────────────────────
 if (-not $SkipCore) {
     Step 'Building the core (PyInstaller)'
     & python (Join-Path $root 'scripts/build_core.py')
@@ -97,7 +124,7 @@ if (-not (Test-Path $binaries) -or -not (Get-ChildItem $binaries -Filter 'jarvis
     throw "No core binary in $binaries. Run without -SkipCore."
 }
 
-# ── 4. The shell and the installer ───────────────────────────────────────
+# ── 5. The shell and the installer ───────────────────────────────────────
 Step 'Building the installer (Tauri + NSIS)'
 Push-Location $desktop
 try {
@@ -105,7 +132,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed.' }
 } finally { Pop-Location }
 
-# ── 5. Report what was produced ──────────────────────────────────────────
+# ── 6. Report what was produced ──────────────────────────────────────────
 $nsis = Join-Path $desktop 'src-tauri/target/release/bundle/nsis'
 $installer = Get-ChildItem $nsis -Filter '*-setup.exe' -ErrorAction SilentlyContinue |
     Select-Object -First 1

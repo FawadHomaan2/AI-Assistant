@@ -148,7 +148,11 @@ scripts/make_icons.py  regenerates the app icons from source
 # One-time: set up the Python core the shell will spawn.
 cd services/jarvis
 python -m venv .venv
-.venv/Scripts/pip install -e ".[dev,secrets]"    # macOS/Linux: .venv/bin/pip
+# Everything the installer ships. Drop `voice` for a faster install if you do
+# not need the wake word; drop `documents` if you will not read PDFs or Word
+# files. Both degrade a feature rather than breaking anything, and Settings
+# says which are missing.
+.venv/Scripts/pip install -e ".[dev,secrets,documents,voice]"   # macOS/Linux: .venv/bin/pip
 
 cd ../../apps/desktop
 npm install
@@ -170,8 +174,19 @@ message back and is explicitly *not* a language model. The UI says so, because a
 provider that fabricated plausible answers would make the system look like it
 worked when it did not.
 
-For real answers, edit `config.toml` in the Jarvis data folder
-(`%LOCALAPPDATA%\Jarvis` on Windows) — the easiest local option:
+For real answers, use **Settings → AI models**. Pick a service from the list,
+paste a key if it needs one, press Add, and switch to it — no restart, and no
+editing files. The list is served by the core, so it is the same set of services
+the adapters actually support rather than a second list that drifts.
+
+Cloud services need one more deliberate step: **Allow cloud models**, a separate
+switch. A stored key is not consent, so a key kept for later does not start
+sending conversations off the machine on its own. Allowing document and screen
+*content* to reach a cloud model is a third switch again.
+
+Editing `config.toml` in the Jarvis data folder (`%LOCALAPPDATA%\Jarvis` on
+Windows) still works and is equivalent — the panel writes the same file, keeping
+its comments:
 
 ```toml
 [ai]
@@ -182,14 +197,17 @@ kind = "ollama"
 model = "qwen2.5:14b-instruct"
 ```
 
-Cloud providers additionally need `allow_cloud = true` and an API key, which is
-stored in the Windows Credential Manager by name. `config.toml` never holds a
-key, and pasting one into the `credential` field is rejected with an explanation.
+API keys are never in that file. They go to the Windows Credential Manager under
+the name in `credential`, and pasting a key into that field instead of a name is
+rejected with an explanation. The panel never reads a key back — it reports
+"Ready", not a value.
 
 ### Connecting Claude, ChatGPT, Gemini and the rest
 
-Four adapters cover them. `config.toml` ships every block below commented out —
-uncomment one, set `default` to its name, and set `allow_cloud = true`.
+Four adapters cover them, and **Settings → AI models** offers each one by name.
+The table below is the same set for anyone configuring it by hand: `config.toml`
+ships every block commented out — uncomment one, set `default` to its name, and
+set `allow_cloud = true`.
 
 | Service | `kind` | Notes |
 |---|---|---|
@@ -243,8 +261,16 @@ provider they do not, and the Privacy dashboard records each time that happens.
 
 ### Turning on the wake word
 
-Voice needs the `voice` extra, which is not installed by default and is not in
-the packaged build — see `docs/PHASES.md` for why.
+**The installer includes voice.** The wake word, speech-to-text and the spoken
+reply are in the packaged build, so "Hey Jarvis" needs no checkout. Earlier
+builds excluded them to stay small, which made the feature unreachable from the
+thing people actually download.
+
+The *models* are not bundled — they are fetched on first use and checked against
+a recorded SHA-256, which is why the installer is far smaller than the sum of
+what it can do.
+
+Running from source, install the extra yourself:
 
 ```bash
 cd services/jarvis
@@ -252,9 +278,10 @@ cd services/jarvis
 ```
 
 On Linux also install PortAudio (`sudo apt install libportaudio2`); on Windows
-it comes with the Python package.
+it comes with the Python package, which is why the installer needs nothing
+extra.
 
-Then, with Jarvis running:
+Either way, with Jarvis running:
 
 1. **Permissions → "Use the microphone"**, and turn it on. It is off by default
    and the microphone button will not open it for you — a microphone that stays
@@ -268,7 +295,21 @@ Then, with Jarvis running:
    the one download Jarvis does not checksum itself; faster-whisper fetches its
    own weights through `huggingface_hub`, which verifies them against the Hub's
    hashes.
-4. Press the microphone, and say **"Hey Jarvis"**.
+4. **Settings → Voice**, and turn on *Listen for "Hey Jarvis" at startup* if you
+   want it to behave like a wake word should — live from the moment Jarvis
+   starts, with no button to press each session. Off, step 5 is needed every
+   time.
+5. Press the microphone (or just say **"Hey Jarvis"**, if you did step 4).
+
+All three of the setting, the permission and the models have to be in place
+before Jarvis listens on its own. With any of them missing it starts without
+listening and says which, rather than failing to start — refusing to launch over
+an unavailable microphone would be the worse bargain.
+
+`[voice] enabled` was dead configuration until now: it was read from
+`config.toml`, passed into the pipeline, reported over the API, and acted on by
+nothing. Setting it did nothing at all, which is why the wake word had to be
+started by hand on every launch.
 
 The button shows what the microphone is actually doing — waiting, recording,
 thinking, speaking — because every transition in the core goes through one
@@ -333,24 +374,31 @@ cd services/jarvis
 python3 scripts/check_contrast.py                  # WCAG AA, both themes
 ```
 
-### Updating
+### Downloading and updating
 
-The app can update itself, but **it is switched off until a signing key
-exists** — the repository ships none, and a placeholder key nobody generated
+Tagged releases are on the [releases page](https://github.com/FawadHomaan2/AI-Assistant/releases)
+with a permanent link, which a CI artifact is not — those expire and need a
+GitHub login.
+
+Installing a new build over an old one keeps everything in
+`%LOCALAPPDATA%\jarvis`: conversations, learned memory, the audit log,
+permissions, plugins and every downloaded model. Only the program is replaced.
+
+The app can also **update itself**, but that is switched off until a signing
+key exists — the repository ships none, and a placeholder key nobody generated
 would be worse than nothing. Settings → Updates says which state you are in,
-and an unconfigured build makes no network request looking for updates.
+and an unconfigured build makes no network request looking for updates. The
+update endpoint is already configured; a public key is the only missing piece.
 
-Until it is set up, updating means installing a new build over the old one.
-That keeps everything in `%LOCALAPPDATA%\jarvis`: conversations, learned
-memory, the audit log, permissions, plugins and every downloaded model. Only
-the program is replaced.
+Turning it on is one command, `python scripts/setup_updates.py`: it generates
+the keypair on your machine, writes the public half into the config, and sets
+the two repository secrets. `docs/UPDATES.md` has the detail, and the manual
+steps if you would rather do them yourself. Releasing works without any of it
+— a key only adds the in-app update. The update path has not been run end to
+end yet, and the doc says so.
 
-If you are running from source — which you must be, for voice — updating is
-`git pull` and `npm ci`. No reinstall.
-
-`docs/UPDATES.md` has the setup: a keypair you generate and keep, two
-repository secrets, and a tagged release. Nothing in it has been run end to
-end yet, and it says so.
+If you are running from source, updating is `git pull` and `npm ci`. No
+reinstall.
 
 ### Build the installer (Windows only)
 ```powershell

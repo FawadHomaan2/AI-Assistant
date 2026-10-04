@@ -64,6 +64,27 @@ def _why(exc: Exception) -> str:
     return first.replace("Page.goto: ", "").strip()
 
 
+def playwright_available(executable_path: str = "") -> tuple[bool, str]:
+    """Whether a browser could be started at all, with no session in hand.
+
+    Two parts, because they fail for different reasons and need different
+    fixes: the Python package, then the browser binary itself.
+    """
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        return False, (
+            "Browser automation needs the 'playwright' package. Install the "
+            "'browser' extra: pip install 'jarvis[browser]'"
+        )
+    if executable_path and not Path(executable_path).exists():
+        return False, (
+            f"The browser set in configuration does not exist: {executable_path}. "
+            f"Correct the path, or clear it to use the Chromium Playwright downloads."
+        )
+    return True, "Playwright is installed."
+
+
 DEFAULT_TIMEOUT_MS = 20_000
 MAX_EXTRACT_CHARS = 200_000
 
@@ -212,34 +233,24 @@ class BrowserSession:
     def profile_dir(self) -> Path:
         return paths.data_dir() / "browser-profile"
 
-    @staticmethod
-    def availability(executable_path: str = "") -> tuple[bool, str]:
-        """Whether a browser can actually be started, and if not, what is missing.
+    def availability(self) -> tuple[bool, str]:
+        """Whether THIS session can start a browser, and if not, what is missing.
 
-        Checked in two parts because they fail for different reasons and need
-        different fixes: the Python package, then the browser binary itself.
+        An instance method on purpose. It used to be a static check against the
+        installed `playwright` package, which meant a tool holding an injected
+        session still asked the concrete class — so a stand-in session could not
+        report itself usable, and every test of the tool's judgement needed
+        Playwright installed to say anything at all. The tool should ask the
+        session it was given; that is the whole point of being given one.
         """
-        try:
-            import playwright  # noqa: F401
-        except ImportError:
-            return False, (
-                "Browser automation needs the 'playwright' package. Install the "
-                "'browser' extra: pip install 'jarvis[browser]'"
-            )
-        if executable_path and not Path(executable_path).exists():
-            return False, (
-                f"The browser set in configuration does not exist: {executable_path}. "
-                f"Correct the path, or clear it to use the Chromium Playwright "
-                f"downloads."
-            )
-        return True, "Playwright is installed."
+        return playwright_available(self.settings.executable_path)
 
     async def _ensure(self) -> Any:
         """Start the browser if it is not already running."""
         if self._page is not None:
             return self._page
 
-        ok, detail = self.availability(self.settings.executable_path)
+        ok, detail = self.availability()
         if not ok:
             raise BrowserUnavailable(detail)
 

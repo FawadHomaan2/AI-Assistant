@@ -26,6 +26,15 @@ class StubSession:
         self._title = title
         self.calls: list[tuple[str, Any]] = []
 
+    def availability(self) -> tuple[bool, str]:
+        """A stand-in session is always usable.
+
+        This is why `availability` is an instance method. When the tool asked
+        the concrete class instead, every test in this file silently became a
+        test of "is Playwright installed" and passed only where it was.
+        """
+        return True, "Stub session."
+
     async def current_url(self) -> str:
         return self._url
 
@@ -301,6 +310,23 @@ async def test_overlong_query_is_rejected_with_the_limit() -> None:
     with pytest.raises(ToolInputInvalid) as exc:
         await WebSearchTool(StubSession()).preview({"query": "a" * 5000})  # type: ignore[arg-type]
     assert "400" in exc.value.message
+
+
+async def test_the_tool_asks_its_session_not_the_class(monkeypatch) -> None:
+    """Regression: these tests used to need Playwright installed to say anything.
+
+    The CI job that installs no browser extra turned 14 assertions about risk
+    judgement into assertions about a missing package.
+    """
+    import jarvis.browser.session as session_module
+
+    monkeypatch.setattr(
+        session_module,
+        "playwright_available",
+        lambda path="": (False, "Playwright is not installed"),
+    )
+    preview = await tool().preview({"operation": "open", "url": "https://example.com"})
+    assert preview.blocked == "", "the injected session decides, not the installed package"
 
 
 def test_an_unknown_engine_falls_back_rather_than_crashing() -> None:

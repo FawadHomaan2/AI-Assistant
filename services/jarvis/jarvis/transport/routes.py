@@ -6,7 +6,6 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
-from jarvis.browser.session import BrowserSession
 from jarvis.config import models, secrets
 from jarvis.db.repositories import AuditEntry, AuditRepository
 from jarvis.governance.consent import ConsentAnswer
@@ -253,7 +252,7 @@ async def browser_status(request: Request) -> dict[str, object]:
     describe an intended default that may not match the config file."""
     ctx = _ctx(request)
     settings = ctx.browser.settings
-    available, detail = BrowserSession.availability(settings.executable_path)
+    available, detail = ctx.browser.availability()
     return {
         "available": available,
         "detail": detail,

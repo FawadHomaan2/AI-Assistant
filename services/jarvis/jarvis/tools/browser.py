@@ -124,7 +124,7 @@ class BrowserTool(Tool):
 
     @property
     def spec(self) -> ToolSpec:
-        available, detail = BrowserSession.availability(self.session.settings.executable_path)
+        available, detail = self.session.availability()
         return ToolSpec(
             name="browser",
             description=(
@@ -185,7 +185,7 @@ class BrowserTool(Tool):
                 f"Unknown operation {operation!r}. Supported: {', '.join(OPERATIONS)}."
             )
 
-        available, detail = BrowserSession.availability(self.session.settings.executable_path)
+        available, detail = self.session.availability()
         if not available:
             return Preview(
                 summary="Browser automation is unavailable",

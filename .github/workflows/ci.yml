@@ -102,6 +102,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      # Since Phase 12 the bundle declares the Python core as an `externalBin`,
+      # and Tauri's build script refuses to compile without the file present.
+      # This job compiles; it does not bundle, and building the real 40 MB
+      # sidecar here would add minutes to every push for a binary nothing runs.
+      # A placeholder satisfies the existence check. Nothing executes it: if it
+      # ever did, the empty file would fail loudly rather than silently pass.
+      - name: Place a stand-in for the core sidecar
+        run: |
+          mkdir -p binaries
+          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          printf '#!/bin/sh\necho "placeholder; the real core comes from scripts/build_core.py" >&2\nexit 1\n' \
+            > "binaries/jarvis-core-$triple"
+          chmod +x "binaries/jarvis-core-$triple"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
@@ -128,6 +141,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # The core must exist before Tauri bundles it. Until Phase 12 this job
+      # produced an installer with no core inside it at all, which would have
+      # installed cleanly and then failed on first launch.
+      - name: Build the core sidecar
+        working-directory: services/jarvis
+        run: |
+          pip install -e ".[documents]"
+          pip install pyinstaller
+      - name: Freeze and smoke-test the core
+        working-directory: .
+        run: python scripts/build_core.py
       - run: npm ci
       - run: npm run tauri build
       - uses: actions/upload-artifact@v4

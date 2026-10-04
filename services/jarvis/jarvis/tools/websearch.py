@@ -130,7 +130,7 @@ class WebSearchTool(Tool):
 
     @property
     def spec(self) -> ToolSpec:
-        available, detail = BrowserSession.availability(self.session.settings.executable_path)
+        available, detail = self.session.availability()
         return ToolSpec(
             name="websearch",
             description=(
@@ -174,7 +174,7 @@ class WebSearchTool(Tool):
                 f"That query is {len(query)} characters; the limit is {MAX_QUERY_CHARS}."
             )
 
-        available, detail = BrowserSession.availability(self.session.settings.executable_path)
+        available, detail = self.session.availability()
         if not available:
             return Preview(
                 summary="Web search is unavailable",

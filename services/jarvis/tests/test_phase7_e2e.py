@@ -30,6 +30,7 @@ from jarvis.browser.session import (
     BrowserSettings,
     InteractionFailed,
     NavigationRefused,
+    playwright_available,
 )
 from jarvis.db.engine import Database
 from jarvis.db.repositories import AuditRepository
@@ -111,7 +112,7 @@ def browser_runs() -> bool:
     then fail every test here with a launch error, which reads as "the browser
     code is broken" rather than "the browser is not installed".
     """
-    ok, _ = BrowserSession.availability(find_browser())
+    ok, _ = playwright_available(find_browser())
     if not ok:
         return False
 

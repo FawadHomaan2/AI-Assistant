@@ -15,6 +15,7 @@ mod hotkey;
 mod sidecar;
 mod system;
 mod tray;
+mod update;
 mod window;
 
 use serde::Serialize;
@@ -51,6 +52,11 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ));
+        // Registered even when `plugins.updater.pubkey` is empty, so the
+        // Updates panel can say it is not set up rather than the command
+        // failing to exist. `update.rs` checks the configuration before it
+        // makes any request, so an unconfigured build reaches no network.
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
     builder
@@ -68,6 +74,9 @@ pub fn run() {
             estop::emergency_stop,
             estop::clear_emergency_stop,
             estop::emergency_stop_state,
+            update::update_status,
+            update::check_for_update,
+            update::install_update,
             sidecar::core_endpoint,
             sidecar::core_status,
             sidecar::restart_core,

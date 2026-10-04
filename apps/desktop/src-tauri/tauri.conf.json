@@ -73,5 +73,13 @@
     "resources": {
       "../../../plugins/word-count": "plugins/word-count"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [],
+      "requireSignedVersion": true,
+      "allowDowngrades": false
+    }
   }
 }

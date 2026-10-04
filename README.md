@@ -333,6 +333,25 @@ cd services/jarvis
 python3 scripts/check_contrast.py                  # WCAG AA, both themes
 ```
 
+### Updating
+
+The app can update itself, but **it is switched off until a signing key
+exists** — the repository ships none, and a placeholder key nobody generated
+would be worse than nothing. Settings → Updates says which state you are in,
+and an unconfigured build makes no network request looking for updates.
+
+Until it is set up, updating means installing a new build over the old one.
+That keeps everything in `%LOCALAPPDATA%\jarvis`: conversations, learned
+memory, the audit log, permissions, plugins and every downloaded model. Only
+the program is replaced.
+
+If you are running from source — which you must be, for voice — updating is
+`git pull` and `npm ci`. No reinstall.
+
+`docs/UPDATES.md` has the setup: a keypair you generate and keep, two
+repository secrets, and a tagged release. Nothing in it has been run end to
+end yet, and it says so.
+
 ### Build the installer (Windows only)
 ```powershell
 pwsh -File scripts/build_windows.ps1    # → apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe

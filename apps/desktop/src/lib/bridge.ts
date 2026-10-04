@@ -66,6 +66,43 @@ export function emergencyStopState(): Promise<BridgeResult<boolean>> {
   return invoke<boolean>('emergency_stop_state');
 }
 
+/**
+ * What the updater can see, without touching the network.
+ *
+ * `configured` is false unless `plugins.updater` in `tauri.conf.json` carries
+ * both a public key and an endpoint — the repository ships neither, so an
+ * unsigned build reports that instead of pretending to check.
+ */
+export interface UpdateStatus {
+  configured: boolean;
+  currentVersion: string;
+  availableVersion: string | null;
+  notes: string | null;
+  date: string | null;
+  detail: string;
+}
+
+/** Read the current state. Makes no request. */
+export function updateStatus(): Promise<BridgeResult<UpdateStatus>> {
+  return invoke<UpdateStatus>('update_status');
+}
+
+/** Ask the endpoint whether a newer release exists. Makes one request. */
+export function checkForUpdate(): Promise<BridgeResult<UpdateStatus>> {
+  return invoke<UpdateStatus>('check_for_update');
+}
+
+/**
+ * Download, verify and install, then restart.
+ *
+ * The bytes are verified against the key compiled into this build before
+ * anything is written, and the core is stopped first so the installer is not
+ * replacing an executable that is holding the database open.
+ */
+export function installUpdate(): Promise<BridgeResult<null>> {
+  return invoke<null>('install_update');
+}
+
 /** Register/replace the global activation shortcut. Returns the accepted accelerator. */
 export function setGlobalShortcut(accelerator: string): Promise<BridgeResult<string>> {
   return invoke<string>('set_global_shortcut', { accelerator });

@@ -148,7 +148,11 @@ scripts/make_icons.py  regenerates the app icons from source
 # One-time: set up the Python core the shell will spawn.
 cd services/jarvis
 python -m venv .venv
-.venv/Scripts/pip install -e ".[dev,secrets]"    # macOS/Linux: .venv/bin/pip
+# Everything the installer ships. Drop `voice` for a faster install if you do
+# not need the wake word; drop `documents` if you will not read PDFs or Word
+# files. Both degrade a feature rather than breaking anything, and Settings
+# says which are missing.
+.venv/Scripts/pip install -e ".[dev,secrets,documents,voice]"   # macOS/Linux: .venv/bin/pip
 
 cd ../../apps/desktop
 npm install

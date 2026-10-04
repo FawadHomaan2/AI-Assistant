@@ -81,9 +81,10 @@ build of the same spec, by package:
 | Piper | ~60 MB |
 | SciPy and NumPy (openWakeWord's feature pipeline) | ~112 MB |
 
-That compresses to a one-file binary of roughly 220 MB. Windows figures differ —
-no uvloop, different ffmpeg and CTranslate2 builds — and the number CI reports
-for the real installer is the one to trust.
+That compresses to a one-file binary of 216 MB on Linux. **Windows is smaller:
+164 MB for the core and about 165 MB for the installer**, measured in CI — no
+uvloop, and leaner ffmpeg and CTranslate2 builds. Windows is the shipping
+target, so that is the number that counts.
 
 PyAV is the galling one: Jarvis feeds faster-whisper raw PCM frames and never
 decodes a media file, but `faster_whisper/__init__.py` imports `decode_audio` on

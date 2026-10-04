@@ -212,7 +212,21 @@ jobs:
           set -euo pipefail
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
 
-          EXISTING=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || echo "")
+          # `gh api` prints its error body to STDOUT, not stderr, so a 404 for a
+          # tag that does not exist is captured by the command substitution just
+          # like a sha would be — and `|| echo ""` never runs, because the
+          # substitution already succeeded in capturing it. The first version of
+          # this step therefore read the 404 JSON as the tag's current commit and
+          # refused to publish, reporting that v0.2.1 "already exists at
+          # {"message":"Not Found"...}".
+          #
+          # So the result is checked for shape rather than trusted: anything that
+          # is not a 40-character hex sha means the tag is not there.
+          EXISTING=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          if ! printf '%s' "$EXISTING" | grep -qE '^[0-9a-f]{40}$'; then
+            EXISTING=""
+          fi
+
           if [ -z "$EXISTING" ]; then
             gh api -X POST "repos/$REPO/git/refs" \
               -f "ref=refs/tags/$TAG" -f "sha=$SHA" >/dev/null
@@ -321,7 +335,14 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          POINTS_AT=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')
+          POINTS_AT=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          # Shape-checked for the same reason as the step above: an error body on
+          # stdout would otherwise be compared against the sha and reported as a
+          # mismatch, which names the wrong problem.
+          if ! printf '%s' "$POINTS_AT" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Could not read the tag $TAG after publishing: $POINTS_AT"
+            exit 1
+          fi
           if [ "$POINTS_AT" != "$SHA" ]; then
             echo "::error::$TAG points at $POINTS_AT but the installer was built from $SHA."
             echo "::error::Anyone checking out the tag would not get the code they downloaded."

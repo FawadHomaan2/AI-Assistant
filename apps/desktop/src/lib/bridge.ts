@@ -43,12 +43,27 @@ export function hideWindow(): Promise<BridgeResult<null>> {
 }
 
 /**
- * Broadcast an emergency stop. In Phase 1 this cancels shell-side work and flips
- * the UI to Paused; cancelling in-flight *tool* execution lands in Phase 10 when
- * tools exist to cancel.
+ * Latch an emergency stop in the shell. Holds even when the window is hidden,
+ * and every tool checks it between steps.
  */
 export function emergencyStop(): Promise<BridgeResult<null>> {
   return invoke<null>('emergency_stop');
+}
+
+/**
+ * Release the shell's latch.
+ *
+ * This had no binding at all, so resuming cleared the core's stop and left the
+ * shell's set. The latch is a process-global flag, so the only thing that reset
+ * it was restarting the application — which is what people had to do.
+ */
+export function clearEmergencyStop(): Promise<BridgeResult<null>> {
+  return invoke<null>('clear_emergency_stop');
+}
+
+/** Whether the shell's latch is currently set. */
+export function emergencyStopState(): Promise<BridgeResult<boolean>> {
+  return invoke<boolean>('emergency_stop_state');
 }
 
 /** Register/replace the global activation shortcut. Returns the accepted accelerator. */

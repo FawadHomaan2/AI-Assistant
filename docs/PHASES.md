@@ -19,6 +19,30 @@ Shipped:
 - Consent dialog implementing the §7 contract, including typed-phrase
   confirmation for critical actions.
 - Emergency stop: UI button, `Ctrl+Shift+Esc`, tray item, Rust-side latch.
+
+**The emergency stop used to require killing the application.** Reported from
+use, and worth recording because it was two bugs wearing one symptom.
+
+`estop::engage` emitted `jarvis://emergency-stop` unconditionally, and the
+webview listened for that event by *engaging the stop* — which invoked the shell,
+which emitted again. One button press became an unbounded loop of IPC calls, and
+every turn of it also posted to the core and appended a chat message, so the
+window stopped responding. The tray path emitted a second time on top of
+`engage`, starting two loops per click.
+
+Underneath that, resume only cleared the core's stop. The shell's latch is a
+process-global `AtomicBool` and nothing in the interface was bound to
+`clear_emergency_stop` at all, so the only thing that ever reset it was
+restarting the process.
+
+Both halves are fixed and both are pinned by tests. `engage` and
+`clear_and_notify` now notify only on a real transition, so neither side can
+restart the loop; the event path in the store (`applyEmergencyStop`) changes
+local state and calls nothing; and resume clears the shell as well as the core.
+Resume is also no longer blocked by an unreachable core — refusing to leave the
+stopped state because a call failed was the same trap by another route, and a
+core that cannot be reached cannot run anything either. It says plainly when
+one side did not confirm.
 - 45 frontend tests, 7 Rust tests. `tsc`, `vite build`, `cargo clippy` clean.
 
 Deliberately absent, and stated as such in the UI: the AI core, every tool,
@@ -38,9 +62,31 @@ Shipped:
   a single JSON handshake line to stdout; the token never touches disk.
 - **Transport:** FastAPI over loopback, bearer auth with constant-time compare,
   Origin/Host checks, and a WebSocket that streams agent events into the UI.
-- **Provider gateway:** one interface, four implementations — Anthropic,
-  OpenAI-compatible (covers LM Studio / vLLM / llama.cpp server / OpenRouter /
-  Azure), Ollama, and a development echo. Per-job routing, typed errors.
+- **Provider gateway:** one interface, five implementations — Anthropic (Claude),
+  OpenAI-compatible (ChatGPT, OpenRouter, Groq, Together, DeepSeek, Mistral,
+  Azure, LM Studio, vLLM, llama.cpp server — they differ only by `base_url`),
+  Google Gemini, Ollama, and a development echo. Per-job routing, typed errors.
+
+  Gemini needs its own adapter rather than a `base_url`: the assistant role is
+  `model`, messages are `contents[].parts[].text`, the system prompt is a
+  separate `systemInstruction`, and streaming needs `?alt=sse` — without which
+  the endpoint returns one JSON array at the end, which looks exactly like a
+  provider refusing to stream. Its `health()` lists what the key can reach and
+  names alternatives when the configured model has been retired, because Google
+  retires IDs on its own schedule and a bare 404 explains that badly.
+
+  `ProviderKind` and the registry had drifted: `llama_cpp` was an accepted kind
+  with nothing behind it, so a config using it validated and then failed to
+  build with "Unknown provider kind". It maps to the OpenAI-compatible adapter
+  now, and a test asserts every advertised kind can actually be built.
+
+  The shipped `config.toml` carries a commented block per service, and a test
+  uncomments every one of them and asserts it parses, builds, and reports itself
+  unconfigured rather than ready. That test found the browser section's
+  `executable_path` example to be invalid TOML — a Windows path in a
+  double-quoted string, which fails with "Unescaped '\' in a string" and names
+  a column rather than the setting. Anyone following that comment would have got
+  a core that would not start.
 - **Privacy classes + egress gate:** `SENSITIVE` payloads raise rather than being
   filtered; cloud and file-content egress are separate opt-ins; secrets are
   redacted and payloads size-capped before any network call.

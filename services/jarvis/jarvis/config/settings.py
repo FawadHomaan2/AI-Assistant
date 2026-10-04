@@ -18,7 +18,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from jarvis.config import paths
 from jarvis.util.errors import ConfigError
 
-ProviderKind = Literal["dev_echo", "anthropic", "openai_compat", "ollama", "llama_cpp"]
+#: Every value here must have an entry in `jarvis.ai.gateway.REGISTRY`.
+#: `test_providers.py` asserts that, because a kind that validates and then
+#: fails to build reads as a broken install rather than a typo.
+ProviderKind = Literal[
+    "dev_echo",
+    "anthropic",
+    "openai_compat",
+    "google",
+    "ollama",
+    "llama_cpp",
+]
 AssistantMode = Literal["paused", "guarded", "assisted", "developer"]
 
 
@@ -220,10 +230,53 @@ allow_cloud_content = false
 [ai.providers.dev_echo]
 kind = "dev_echo"
 
+# ── Cloud models ────────────────────────────────────────────────────────────
+# Each needs `allow_cloud = true` above, and a key stored under the name in
+# `credential` — never the key itself. Switch between them with `default`.
+#
+# `model` is always optional: leave it out to take the adapter's default, or
+# set it to anything the provider serves. Model names change faster than this
+# file, so the defaults are a starting point, not a promise.
+
+# Claude.
 # [ai.providers.anthropic]
 # kind = "anthropic"
-# model = "claude-sonnet-4-5"
+# model = "claude-opus-5-5"         # or claude-sonnet-5-5, claude-haiku-4-5
 # credential = "jarvis/anthropic"   # name of the credential entry, not the key
+
+# ChatGPT.
+# [ai.providers.openai]
+# kind = "openai_compat"
+# model = "gpt-4o"
+# base_url = "https://api.openai.com/v1"
+# credential = "jarvis/openai"
+
+# Google Gemini. `jarvis-core` can list what your key actually reaches:
+# GET /providers/health reports it, and names alternatives if the model is gone.
+# [ai.providers.gemini]
+# kind = "google"
+# model = "gemini-2.0-flash"
+# credential = "jarvis/gemini"
+
+# OpenRouter — one key, many vendors' models behind an OpenAI-shaped API.
+# Useful for trying models without an account for each.
+# [ai.providers.openrouter]
+# kind = "openai_compat"
+# model = "anthropic/claude-opus-4.1"
+# base_url = "https://openrouter.ai/api/v1"
+# credential = "jarvis/openrouter"
+
+# Groq, Together, DeepSeek, Mistral, Azure OpenAI and anything else
+# OpenAI-shaped: the same adapter with a different base_url.
+# [ai.providers.groq]
+# kind = "openai_compat"
+# model = "llama-3.3-70b-versatile"
+# base_url = "https://api.groq.com/openai/v1"
+# credential = "jarvis/groq"
+
+# ── Local models ────────────────────────────────────────────────────────────
+# No key, no network, and `allow_cloud` stays false. Nothing you say leaves the
+# machine, which is the only configuration where that is true.
 
 # [ai.providers.ollama]
 # kind = "ollama"
@@ -257,8 +310,12 @@ allow_any_host = false
 # for a web page to reach services on this machine. Off unless you need it.
 allow_loopback = false
 
-# Point at an installed Chromium or Edge to skip Playwright's own download:
-# executable_path = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+# Point at an installed Chromium or Edge to skip Playwright's own download.
+# Single quotes, not double: TOML treats a backslash in a double-quoted string
+# as an escape, so a Windows path there fails with "Unescaped '\\' in a string"
+# — an error that names a column, not this setting. A single-quoted literal
+# string takes the path exactly as Explorer shows it.
+# executable_path = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 """
 
 

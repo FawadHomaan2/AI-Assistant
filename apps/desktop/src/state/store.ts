@@ -13,7 +13,11 @@ import type {
   SystemSnapshot,
   ViewId,
 } from '@/types';
-import { emergencyStop as shellEmergencyStop, getSystemSnapshot } from '@/lib/bridge';
+import {
+  emergencyStop as shellEmergencyStop,
+  clearEmergencyStop as shellClearEmergencyStop,
+  getSystemSnapshot,
+} from '@/lib/bridge';
 import * as api from '@/lib/api';
 import { CoreSocket, type SocketState } from '@/lib/ws';
 
@@ -211,7 +215,14 @@ interface AppState {
   refreshVoice: () => Promise<void>;
 
   // ── Emergency stop ──────────────────────────────────────────────────────
+  /** User-initiated: latches the shell and the core, then updates the UI. */
   triggerEmergencyStop: () => Promise<void>;
+  /**
+   * Apply a stop that has already happened elsewhere — the tray, or another
+   * window. Local state only: it must never call back into the shell, because
+   * the shell is what told us.
+   */
+  applyEmergencyStop: () => void;
   resume: () => Promise<void>;
 }
 
@@ -766,7 +777,14 @@ export const useStore = create<AppState>((set, get) => {
       get().logActivity({ summary: 'Listening for "Jarvis"', status: 'succeeded' });
     },
 
-    triggerEmergencyStop: async () => {
+    applyEmergencyStop: () => {
+      // Local only. The shell emits `jarvis://emergency-stop` when it latches,
+      // and this used to be wired straight to `triggerEmergencyStop`, which
+      // invokes the shell again: engage, emit, listen, engage, with an HTTP
+      // post and a chat message every time round. One button press froze the
+      // window. The shell now only emits on a real transition, and this path
+      // calls nothing, so neither side can restart the loop on its own.
+      if (get().stopped) return;
       set({
         stopped: true,
         mode: 'paused',
@@ -776,25 +794,70 @@ export const useStore = create<AppState>((set, get) => {
         streamingId: null,
         voiceMic: { ...get().voiceMic, listening: false },
       });
-      get().logActivity({ summary: 'EMERGENCY STOP activated', status: 'cancelled', detail: 'All automation halted' });
+      get().logActivity({
+        summary: 'EMERGENCY STOP activated',
+        status: 'cancelled',
+        detail: 'All automation halted',
+      });
       get().pushMessage({
         role: 'system',
         notice: true,
         content:
-          'Emergency stop activated. Jarvis is paused, any in-flight response was abandoned, ' +
-          'and the core has been told to stop. Tool execution does not exist yet, so there ' +
-          `was nothing else running to abort; per-tool cancellation arrives in Phase ${PHASE.permissions}.`,
+          'Emergency stop activated. Jarvis is paused, any in-flight response was ' +
+          'abandoned, the microphone is closed, and every tool refuses until you ' +
+          'resume. Press Resume to clear it.',
       });
-      // Latch it in both the shell and the core; neither call is required for
-      // the UI to be safe, so failures are logged rather than surfaced twice.
+    },
+
+    triggerEmergencyStop: async () => {
+      get().applyEmergencyStop();
+      // Latch it in both the shell and the core. Neither call is needed for the
+      // UI to be safe, so a failure is logged rather than surfaced twice.
       await shellEmergencyStop();
       await api.engageEmergencyStop();
     },
 
     resume: async () => {
-      set({ stopped: false, mode: 'guarded' });
-      await api.clearEmergencyStop();
-      get().logActivity({ summary: 'Emergency stop cleared', status: 'succeeded' });
+      // Clear the shell's latch as well as the core's. Only the core's was ever
+      // cleared, and the shell's is a process-global flag, so the stop survived
+      // every resume and the only way back was restarting the application.
+      const [shell, core] = await Promise.all([
+        shellClearEmergencyStop(),
+        api.clearEmergencyStop(),
+      ]);
+
+      // Resume is never blocked on a reachable core. Refusing to leave the
+      // stopped state because a call failed is the trap this fix exists to
+      // remove: it leaves no way back except restarting. A core that cannot be
+      // reached also cannot run anything, so clearing locally is not a claim
+      // that something unsafe is now permitted.
+      set({ stopped: false, mode: 'guarded', busy: false, streamingId: null });
+
+      const failures = [
+        core.ok ? '' : `the core (${core.message})`,
+        shell.ok ? '' : 'the desktop shell',
+      ].filter(Boolean);
+
+      get().logActivity({
+        summary: 'Emergency stop cleared',
+        status: failures.length ? 'blocked' : 'succeeded',
+        detail: failures.length
+          ? `Did not confirm: ${failures.join(' and ')}`
+          : 'Shell and core both released',
+      });
+
+      if (failures.length) {
+        // Said plainly, because the half-state is genuinely confusing: the
+        // interface is running but something downstream may still refuse.
+        get().pushMessage({
+          role: 'system',
+          notice: true,
+          content:
+            `Jarvis has resumed here, but ${failures.join(' and ')} did not confirm. ` +
+            'If actions are still refused, press Stop and Resume once more, or restart Jarvis.',
+        });
+      }
+      void get().refreshVoice();
     },
   };
 });

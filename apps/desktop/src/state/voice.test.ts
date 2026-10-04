@@ -19,6 +19,8 @@ vi.mock('@/lib/bridge', () => ({
     .fn()
     .mockResolvedValue({ ok: false, reason: { kind: 'no-bridge', what: 'core_endpoint' } }),
   emergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  clearEmergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  emergencyStopState: vi.fn().mockResolvedValue({ ok: true, value: false }),
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 
@@ -134,7 +136,7 @@ describe('refusals', () => {
     const notice = useStore.getState().messages.at(-1);
     expect(notice?.notice).toBe(true);
     expect(notice?.content).toMatch(/Permissions/);
-    expect(useStore.getState().activity.at(0)?.status).toBe('blocked');
+    expect(useStore.getState().activity.at(-1)?.status).toBe('blocked');
   });
 
   it('never grants the microphone permission on its own', async () => {
@@ -209,13 +211,13 @@ describe('pipeline events drive the indicator', () => {
 
   it('logs a wake', () => {
     useStore.getState().handleEvent({ type: 'voice.wake', word: 'hey_jarvis' });
-    expect(useStore.getState().activity.at(0)?.summary).toMatch(/wake word/i);
+    expect(useStore.getState().activity.at(-1)?.summary).toMatch(/wake word/i);
   });
 
   it('reports a capture error as a notice', () => {
     useStore.getState().handleEvent({ type: 'voice.error', detail: 'the microphone was unplugged' });
     expect(useStore.getState().messages.at(-1)?.content).toBe('the microphone was unplugged');
-    expect(useStore.getState().activity.at(0)?.status).toBe('failed');
+    expect(useStore.getState().activity.at(-1)?.status).toBe('failed');
   });
 });
 

@@ -186,6 +186,61 @@ Cloud providers additionally need `allow_cloud = true` and an API key, which is
 stored in the Windows Credential Manager by name. `config.toml` never holds a
 key, and pasting one into the `credential` field is rejected with an explanation.
 
+### Connecting Claude, ChatGPT, Gemini and the rest
+
+Four adapters cover them. `config.toml` ships every block below commented out —
+uncomment one, set `default` to its name, and set `allow_cloud = true`.
+
+| Service | `kind` | Notes |
+|---|---|---|
+| Claude | `anthropic` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
+| ChatGPT | `openai_compat` | `base_url = "https://api.openai.com/v1"` |
+| Gemini | `google` | Its own adapter — Gemini's wire format is neither of the others |
+| OpenRouter | `openai_compat` | One key, hundreds of models from many vendors |
+| Groq, Together, DeepSeek, Mistral, Azure | `openai_compat` | Same adapter, different `base_url` |
+| Ollama | `ollama` | Local, no key, nothing leaves the machine |
+| LM Studio, vLLM, llama.cpp | `openai_compat` or `llama_cpp` | Local, `base_url` on 127.0.0.1 |
+
+```toml
+[ai]
+default = "anthropic"
+allow_cloud = true          # a separate, deliberate decision
+
+[ai.providers.anthropic]
+kind = "anthropic"
+model = "claude-opus-5-5"
+credential = "jarvis/anthropic"   # the NAME of a credential entry, never the key
+```
+
+**OpenRouter is the one to reach for if you want to try many models** without an
+account for each — it speaks the OpenAI API, so it needs no new adapter:
+
+```toml
+[ai.providers.openrouter]
+kind = "openai_compat"
+model = "anthropic/claude-opus-4.1"
+base_url = "https://openrouter.ai/api/v1"
+credential = "jarvis/openrouter"
+```
+
+Model names move faster than this file, so the values above are starting points
+rather than promises. `GET /providers/health` reports what each configured
+provider can actually reach; for Gemini it lists the models your key serves and
+names alternatives when the configured one has been retired, because Google
+retires IDs on its own schedule and a bare 404 explains that badly.
+
+Two things worth knowing before you add a key:
+
+**Nothing is sent anywhere until `allow_cloud = true`.** Storing a key is not
+consent to use it; the gate is separate and off by default, and a configured
+cloud provider is refused while it is off. `allow_cloud_content` is a second,
+narrower switch for sending file and document *contents* rather than just your
+messages.
+
+**Local and cloud are not interchangeable on privacy.** With Ollama or a local
+OpenAI-compatible server, conversations stay on the machine. With any cloud
+provider they do not, and the Privacy dashboard records each time that happens.
+
 ### Turning on the wake word
 
 Voice needs the `voice` extra, which is not installed by default and is not in

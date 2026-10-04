@@ -13,6 +13,11 @@ const getSystemSnapshot = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/bridge', () => ({
   getSystemSnapshot,
   hasShell: () => false,
+  // The store imports these at module load, so the mock has to carry them even
+  // though nothing in this file presses the emergency stop.
+  emergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  clearEmergencyStop: vi.fn().mockResolvedValue({ ok: true, value: null }),
+  emergencyStopState: vi.fn().mockResolvedValue({ ok: true, value: false }),
 }));
 
 const snapshot = (over: Partial<SystemSnapshot> = {}): SystemSnapshot => ({

@@ -31,12 +31,13 @@ async def test_computer_task_never_reaches_the_model(ctx) -> None:
     handled by the tool layer or refused — it is never answered by the model,
     so Jarvis cannot claim to have done something it did not do.
     """
-    _, events = await _run(ctx, "Open Chrome and search for React docs")
+    _, events = await _run(ctx, "Open flurbleglorp and search for React docs")
     kinds = [e.type for e in events]
     assert EventType.DELTA not in kinds, "a computer task must never reach the model"
-    # It now reaches the application tool. On a machine without Chrome installed
-    # that produces a refusal, which is still the tool layer answering — not the
-    # model claiming to have opened a browser.
+    # It reaches the application tool, which refuses because no such program
+    # exists. That is still the tool layer answering — not the model claiming
+    # to have opened a browser. The name is deliberately impossible: asking for
+    # Chrome made the suite launch a real browser on any machine that had one.
     assert EventType.PLAN in kinds
     assert {EventType.NOTICE, EventType.TOOL_RESULT} & set(kinds)
 
@@ -80,7 +81,7 @@ async def test_diagnostics_run_rather_than_being_deferred(ctx) -> None:
 
 
 async def test_notice_is_persisted(ctx) -> None:
-    session, _ = await _run(ctx, "Open Chrome")
+    session, _ = await _run(ctx, "Open flurbleglorp")
     roles = [t.role for t in ctx.turns.history(session.id)]
     assert roles == ["user", "system"]
 

@@ -89,10 +89,14 @@ class TestChat:
         assert body["session_id"].startswith("ses_")
 
     async def test_computer_task_never_reaches_the_model(self, client) -> None:
-        body = (await client.post("/chat", json={"message": "Open Chrome"})).json()
+        """Names an application that cannot exist, so the outcome is the same
+        everywhere. Asking for Chrome made this depend on whether the test
+        machine had Chrome — and on CI, which does, Jarvis correctly launched
+        it and the assertion failed."""
+        body = (await client.post("/chat", json={"message": "Open flurbleglorp"})).json()
         types = [e["type"] for e in body["events"]]
-        assert "notice" in types
-        assert "delta" not in types
+        assert "delta" not in types, "a computer task must never be answered by the model"
+        assert "plan" in types, "it must reach the tool layer"
         assert body["text"] == ""
 
     async def test_empty_message_is_rejected_by_validation(self, client) -> None:

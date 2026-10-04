@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 
+import psutil
 import pytest
 
 from jarvis.governance.risk import Risk
@@ -115,7 +116,15 @@ class TestProcessToolAgainstRealPsutil:
         assert any(p["memoryBytes"] > 0 for p in procs)
 
     async def test_finds_this_process(self, tool) -> None:
-        result = await tool.execute({"operation": "find", "name": "python"})
+        """Search by the name this process actually has, not an assumed one.
+
+        It used to search for "python", which located this process only when
+        the suite was started as `python -m pytest`. CI runs `pytest` directly,
+        where the process is named `pytest`, and the assertion failed for a
+        reason that had nothing to do with the code under test.
+        """
+        name = psutil.Process(os.getpid()).name()
+        result = await tool.execute({"operation": "find", "name": name})
         assert any(p["pid"] == os.getpid() for p in result.data["processes"])
 
     async def test_info_for_a_known_pid(self, tool) -> None:

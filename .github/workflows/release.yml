@@ -43,6 +43,10 @@ on:
       tag:
         description: 'Tag to publish (created at this ref if it does not exist)'
         required: true
+      move_tag:
+        description: 'Repoint the tag if it already exists elsewhere'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -191,6 +195,42 @@ jobs:
           JSON
           echo "wrote latest.json for $NAME"
 
+      # Created here rather than left to the release action, which creates a
+      # missing tag at `target_commitish` — defaulting to the repository's
+      # default branch, not the ref it was dispatched from. That published
+      # v0.2.0 pointing at a commit declaring version 0.1.0, with the code that
+      # was actually built not in the tag's history at all. The binary was
+      # right and the tag was wrong, and nothing in the job noticed.
+      - name: Create or check the tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          MOVE: ${{ github.event.inputs.move_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+
+          EXISTING=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || echo "")
+          if [ -z "$EXISTING" ]; then
+            gh api -X POST "repos/$REPO/git/refs" \
+              -f "ref=refs/tags/$TAG" -f "sha=$SHA" >/dev/null
+            echo "created $TAG at $SHA"
+          elif [ "$EXISTING" = "$SHA" ]; then
+            echo "$TAG already points at $SHA"
+          elif [ "$MOVE" = "true" ]; then
+            # Explicit, never the default: moving a tag someone may already
+            # have fetched is not something to do by accident.
+            gh api -X PATCH "repos/$REPO/git/refs/tags/$TAG" \
+              -F force=true -f "sha=$SHA" >/dev/null
+            echo "::warning::moved $TAG from $EXISTING to $SHA"
+          else
+            echo "::error::$TAG already exists at $EXISTING, but this build is $SHA."
+            echo "::error::Re-run with move_tag enabled to repoint it, or use a new tag."
+            exit 1
+          fi
+
       # Said on the release itself, so someone landing on the page knows
       # whether this one can be installed over an older copy automatically.
       - name: Compose the release notes
@@ -246,7 +286,33 @@ jobs:
           # two of these patterns match nothing on an unsigned one. Set
           # explicitly rather than relying on the action's default.
           fail_on_unmatched_files: false
+          # Without this the action creates a missing tag on the default
+          # branch. Harmless on a tag push, where the tag already exists; the
+          # step above makes it a no-op either way, and this closes the gap if
+          # that step is ever reordered.
+          target_commitish: ${{ github.sha }}
           files: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
             apps/desktop/src-tauri/target/release/bundle/nsis/latest.json
+
+      # The check that was missing. "Does the tag match the version in the
+      # checkout" is about intent; this is about the result, and it is the one
+      # that catches a tag landing on a different commit than the installer was
+      # built from.
+      - name: Check the published tag points at what was built
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          POINTS_AT=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')
+          if [ "$POINTS_AT" != "$SHA" ]; then
+            echo "::error::$TAG points at $POINTS_AT but the installer was built from $SHA."
+            echo "::error::Anyone checking out the tag would not get the code they downloaded."
+            exit 1
+          fi
+          echo "$TAG points at $SHA, which is what was built."

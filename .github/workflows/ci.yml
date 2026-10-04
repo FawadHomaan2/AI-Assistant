@@ -190,7 +190,7 @@ jobs:
       - name: Build the core sidecar
         working-directory: services/jarvis
         run: |
-          pip install -e ".[documents,secrets]"
+          pip install -e ".[documents,secrets,voice]"
           pip install pyinstaller
       - name: Freeze and smoke-test the core
         working-directory: .

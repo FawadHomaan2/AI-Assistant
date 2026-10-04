@@ -262,7 +262,7 @@ system partitions as critically full — five false criticals on a normal machin
 Read-only volumes and anything under 4 GB are now skipped, which matters as much
 on Windows (recovery partitions, mounted ISOs) as here.
 
-## Phase 6 — Voice · **wake word works; not in the packaged build**
+## Phase 6 — Voice · **wake word works, and is in the packaged build**
 
 Shipped: the full pipeline — ring-buffered capture, voice activity detection,
 speech-to-text, text-to-speech, wake word, barge-in, and a state machine whose
@@ -346,12 +346,35 @@ background noise, no reverb and no distance from the microphone. It proves the
 models, the paths, the score key, the threshold and the state machine are
 correct. Whether it hears you is answered by using it.
 
-### It does not work in the packaged installer
+### It works in the packaged installer
 
-`jarvis-core.spec` excludes `onnxruntime` and `openwakeword`, and `sounddevice`
-is not in the base install, so the frozen core cannot run the wake word at all —
-it reports the package missing, correctly. Voice currently requires a source
-checkout with the `voice` extra installed.
+It did not, for two releases. `jarvis-core.spec` excluded `onnxruntime` and
+`openwakeword`, and `sounddevice` was not in the base install, so the frozen
+core could not run the wake word at all — it reported the packages missing,
+correctly, and voice required a source checkout.
+
+That was the wrong trade. "Hey Jarvis" is the feature least worth asking someone
+to clone a repository for, so the voice stack is now bundled: onnxruntime,
+openwakeword, faster-whisper with CTranslate2, Piper and the audio layer. The
+models are still fetched on demand and verified by checksum.
+
+Two bugs surfaced the moment the build started checking itself rather than
+trusting the spec:
+
+- **`unittest` was excluded as ballast**, and openwakeword imports scipy, whose
+  array-API shim imports numpy, which imports `numpy.testing`, which imports
+  `unittest` — at import time, not in a test. The bundle built, started, passed
+  the smoke test, and the wake word reported
+  `ModuleNotFoundError: No module named 'unittest'`.
+- **The document readers were never bundled.** `jarvis.tools.documents` loads
+  them with `__import__(module)` where `module` is a variable, which a static
+  scan cannot follow. They were installed for every build and present in none,
+  so the app reported `pypdf` missing for a dependency that was installed. This
+  had nothing to do with voice and had been true since Phase 12.
+
+Both are why `jarvis-core --selfcheck` exists: it names every optional package
+and whether it imports, and the build fails when something installed for it did
+not make it in. See `docs/PACKAGING.md`.
 
 Bundling it is a deliberate decision rather than an oversight. The wake word
 alone would add ONNX Runtime and PortAudio for a feature that then wakes up and
@@ -824,10 +847,13 @@ ran end to end — build, smoke test, install under the target-triple name Tauri
 expects. The same spec on Windows is the same spec; the bootloader and the
 hidden imports differ, and those are exactly what is unverified.
 
-**The core does not bundle its heavy dependencies.** Whisper, Piper, ONNX,
-Playwright and the document readers are excluded, keeping the installer around
-50 MB rather than 300. Each already reports itself unavailable with a reason,
-so excluding one degrades a feature rather than crashing the core.
+**The core bundles the voice stack, and not much else.** Whisper, Piper, ONNX
+Runtime and the audio layer are in, which is most of the download; Playwright
+stays out because it needs a browser engine rather than just a package, and
+torch is unused. The models are fetched on demand. Anything missing reports
+itself unavailable with a reason rather than crashing the core — and because
+that is indistinguishable from a packaging mistake, the build asks the frozen
+binary what it has (`--selfcheck`) instead of trusting the spec.
 
 **Models are fetched, verified, and refused when unverifiable.** A model is
 loaded and executed by an inference runtime, so a substituted download is a

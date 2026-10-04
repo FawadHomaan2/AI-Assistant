@@ -257,8 +257,16 @@ provider they do not, and the Privacy dashboard records each time that happens.
 
 ### Turning on the wake word
 
-Voice needs the `voice` extra, which is not installed by default and is not in
-the packaged build — see `docs/PHASES.md` for why.
+**The installer includes voice.** The wake word, speech-to-text and the spoken
+reply are in the packaged build, so "Hey Jarvis" needs no checkout. Earlier
+builds excluded them to stay small, which made the feature unreachable from the
+thing people actually download.
+
+The *models* are not bundled — they are fetched on first use and checked against
+a recorded SHA-256, which is why the installer is far smaller than the sum of
+what it can do.
+
+Running from source, install the extra yourself:
 
 ```bash
 cd services/jarvis
@@ -266,9 +274,10 @@ cd services/jarvis
 ```
 
 On Linux also install PortAudio (`sudo apt install libportaudio2`); on Windows
-it comes with the Python package.
+it comes with the Python package, which is why the installer needs nothing
+extra.
 
-Then, with Jarvis running:
+Either way, with Jarvis running:
 
 1. **Permissions → "Use the microphone"**, and turn it on. It is off by default
    and the microphone button will not open it for you — a microphone that stays
@@ -370,8 +379,8 @@ steps if you would rather do them yourself. Releasing works without any of it
 — a key only adds the in-app update. The update path has not been run end to
 end yet, and the doc says so.
 
-If you are running from source — which you must be, for voice — updating is
-`git pull` and `npm ci`. No reinstall.
+If you are running from source, updating is `git pull` and `npm ci`. No
+reinstall.
 
 ### Build the installer (Windows only)
 ```powershell

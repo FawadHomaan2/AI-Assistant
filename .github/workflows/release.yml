@@ -117,7 +117,7 @@ jobs:
       - name: Build the core sidecar
         working-directory: services/jarvis
         run: |
-          pip install -e ".[documents,secrets]"
+          pip install -e ".[documents,secrets,voice]"
           pip install pyinstaller
       - name: Freeze and smoke-test the core
         working-directory: .
@@ -267,9 +267,16 @@ jobs:
             echo
             echo '## Voice'
             echo
-            echo 'The wake word does **not** work from this installer: the frozen core excludes'
-            echo '`onnxruntime` and `openwakeword`, and reports them missing. For "Hey Jarvis",'
-            echo 'run from a source checkout with the `voice` extra — see the README.'
+            echo '"Hey Jarvis" works from this installer. The wake word, speech-to-text and'
+            echo 'the spoken reply are all included — earlier builds excluded them and told you'
+            echo 'to clone the repository instead.'
+            echo
+            echo 'The **models** are downloaded on first use, not bundled: the wake word is'
+            echo 'about 4 MB, the voice 62 MB and the speech model 74 MB. Settings shows what is'
+            echo 'missing and fetches it, and each download is checked against a known SHA-256.'
+            echo
+            echo 'Voice is **off until you turn it on**, and listening needs the microphone'
+            echo 'permission, which is asked for once and can be revoked.'
             echo RELEASE_NOTES
           } >> "$GITHUB_OUTPUT"
 

@@ -33,7 +33,6 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,7 +131,6 @@ def smoke_test(binary: Path) -> None:
         if payload.get("jarvis") != "ready" or not payload.get("port"):
             raise SystemExit(f"[core] unexpected handshake: {line.strip()}")
         print(f"[core] handshake ok — version {payload.get('version')}")
-        check_credential_store(payload)
     finally:
         process.terminate()
         try:
@@ -142,49 +140,61 @@ def smoke_test(binary: Path) -> None:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def check_credential_store(handshake: dict) -> None:
-    """Ask the frozen binary whether it can store an API key.
+def check_bundled_features(binary: Path) -> None:
+    """Fail the build if a package present here did not make it into the bundle.
 
-    `keyring` finds its backends through entry points, so nothing imports the
-    working one by name and PyInstaller bundles the package without it. The
-    symptom is not a crash: the app starts, Settings reports no credential
-    store, and API keys for Claude, ChatGPT and Gemini have nowhere to go.
+    PyInstaller finds imports by scanning source. Several optional packages are
+    loaded by entry point or inside the function that needs them, so a bundle
+    can be missing one and still build, start and pass a smoke test — the
+    feature is just absent, and the first to find out is a user. The installer
+    shipped without `keyring` for a release exactly this way, so no API key
+    could be stored at all.
 
-    Checked by asking the binary rather than by trusting the spec's hidden
-    imports, because the spec is what gets this wrong.
-
-    A backend that is present but unusable is a property of the machine, not of
-    the build — a Linux box with no session keyring, say. Only `"none"`, which
-    means the package itself did not make it in, fails the build.
+    The expected set is not written down anywhere: it is whatever imports in
+    the environment doing the build. So installing an extra is enough to
+    require it in the bundle, and dropping one does not leave a stale
+    assertion behind.
     """
+    sys.path.insert(0, str(CORE))
     try:
-        import keyring  # noqa: F401
-    except ImportError:
-        print("[core] keyring is not installed here, so there is nothing to check")
+        from jarvis.diagnostics import bundle
+    finally:
+        sys.path.pop(0)
+
+    expected = sorted(name for name in bundle.OPTIONAL_PACKAGES if bundle.available(name)[0])
+    if not expected:
+        print("[core] no optional packages installed here, so there is nothing to check")
         return
 
-    url = f"http://127.0.0.1:{handshake['port']}/health"
-    request = urllib.request.Request(url, headers={"authorization": f"Bearer {handshake['token']}"})
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310
-            health = json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError) as exc:
-        raise SystemExit(f"[core] the frozen binary did not answer /health: {exc}") from exc
-
-    store = health.get("credential_store") or {}
-    backend = str(store.get("backend", "unknown"))
-    if backend == "none":
-        raise SystemExit(
-            "[core] the frozen binary reports no credential store at all "
-            f"({store.get('detail')!r}).\n"
-            "[core] `keyring` was installed for this build but did not make it into "
-            "the bundle, so API keys could not be stored.\n"
-            "[core] Add the missing backend to `hiddenimports` in jarvis-core.spec."
-        )
-    print(
-        f"[core] credential store: {backend} "
-        f"({'available' if store.get('available') else 'present but not usable here'})"
+    result = subprocess.run(
+        [str(binary), "--selfcheck"], capture_output=True, text=True, check=False, timeout=120
     )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"[core] `--selfcheck` failed with exit code {result.returncode}:\n"
+            f"{result.stderr[-800:]}"
+        )
+    try:
+        report = json.loads(result.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError) as exc:
+        raise SystemExit(f"[core] could not read the self-check output: {exc}") from exc
+
+    packages = report.get("packages") or {}
+    missing = [name for name in expected if not (packages.get(name) or {}).get("available")]
+    if missing:
+        lines = [
+            "[core] these packages are installed for this build but did not make it",
+            "[core] into the bundle, so the features they provide are silently absent:",
+        ]
+        for name in missing:
+            row = packages.get(name) or {}
+            lines.append(f"[core]   {name} — {row.get('purpose', '?')}")
+            if row.get("detail"):
+                lines.append(f"[core]       {row['detail']}")
+        lines.append("[core] Add them to the collected packages in jarvis-core.spec.")
+        raise SystemExit("\n".join(lines))
+
+    print(f"[core] bundled optional features: {', '.join(expected)}")
 
 
 def install(binary: Path) -> Path:
@@ -211,6 +221,7 @@ def main() -> int:
     binary = build()
     if not args.skip_smoke_test:
         smoke_test(binary)
+        check_bundled_features(binary)
     install(binary)
     print("[core] done")
     return 0

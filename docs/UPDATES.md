@@ -38,6 +38,39 @@ So: generate it yourself, on your own machine. Don't let anyone generate it for
 you and hand it over — including me. A key that has passed through someone
 else's computer is a key they have.
 
+## One command
+
+```powershell
+python scripts/setup_updates.py
+```
+
+That is the whole setup. It generates the keypair, writes the **public** half
+into `tauri.conf.json`, and offers to set the two repository secrets through
+`gh` if you have it signed in. The passphrase is prompted for by the Tauri CLI
+and the private key is piped to `gh` from the file, so neither is printed,
+copied, or passed on a command line.
+
+The private key goes to `~/.tauri/jarvis.key` — outside the repository on
+purpose, since a key inside a working tree is one `git add -A` away from being
+published. Pass `--key-path` to put it elsewhere.
+
+Two other modes:
+
+```powershell
+python scripts/setup_updates.py --check                 # report, change nothing
+python scripts/setup_updates.py --public-key <key|path> # only write the key
+```
+
+The second is the one to use if you already have a keypair, or generated it on
+a different machine.
+
+It refuses a private key pasted where the public one belongs, a truncated
+paste, and a config whose endpoint has been removed — each of which otherwise
+surfaces much later as "signature verification failed" or as an updater that
+silently considers itself switched off.
+
+## Or by hand
+
 ```powershell
 cd apps/desktop
 npm run tauri signer generate -- -w "$env:USERPROFILE\.tauri\jarvis.key"
@@ -55,6 +88,8 @@ It asks for a passphrase, then prints the **public** key and writes the
 ---
 
 ## Wiring it up
+
+The steps the script does for you, for when you want to do them yourself.
 
 **1. Paste the public key.** The endpoint is already filled in, so this is the
 only edit. In `apps/desktop/src-tauri/tauri.conf.json`, replace the empty

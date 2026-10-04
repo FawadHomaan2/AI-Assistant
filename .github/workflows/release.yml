@@ -128,6 +128,24 @@ jobs:
         if: steps.signing.outputs.enabled != 'true'
         run: npm run tauri build
 
+      # `fail_on_unmatched_files: false` below is needed because two of the
+      # three publish patterns match nothing on an unsigned build — which also
+      # removes the safety net from the installer itself. Without this check, a
+      # bundler that named the file something other than `*-setup.exe` would
+      # publish a release with no assets at all: a download link that hands
+      # someone nothing, and no failed job to say so.
+      - name: Check the installer was produced
+        shell: bash
+        run: |
+          BUNDLE=src-tauri/target/release/bundle/nsis
+          if ! ls "$BUNDLE"/*-setup.exe >/dev/null 2>&1; then
+            echo "::error::No *-setup.exe in $BUNDLE, so there is nothing to publish."
+            echo "Contents of the bundle directory:"
+            ls -la "$BUNDLE" 2>/dev/null || echo "(the directory does not exist)"
+            exit 1
+          fi
+          echo "installer: $(ls "$BUNDLE"/*-setup.exe)"
+
       - name: Write latest.json
         if: steps.signing.outputs.enabled == 'true'
         shell: bash

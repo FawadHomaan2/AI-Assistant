@@ -349,10 +349,12 @@ would be worse than nothing. Settings → Updates says which state you are in,
 and an unconfigured build makes no network request looking for updates. The
 update endpoint is already configured; a public key is the only missing piece.
 
-`docs/UPDATES.md` has the setup: a keypair you generate on your own machine,
-two repository secrets, and a tag. Releasing works without it — a key only
-adds the in-app update. The update path has not been run end to end yet, and
-the doc says so.
+Turning it on is one command, `python scripts/setup_updates.py`: it generates
+the keypair on your machine, writes the public half into the config, and sets
+the two repository secrets. `docs/UPDATES.md` has the detail, and the manual
+steps if you would rather do them yourself. Releasing works without any of it
+— a key only adds the in-app update. The update path has not been run end to
+end yet, and the doc says so.
 
 If you are running from source — which you must be, for voice — updating is
 `git pull` and `npm ci`. No reinstall.

@@ -40,6 +40,12 @@ foreach ($tool in @('python', 'npm', 'cargo', 'rustc')) {
         throw "$tool is not on PATH. See docs/PACKAGING.md for what this build needs."
     }
 }
+Step 'Checking the lockfile carries the Windows native binaries'
+& python (Join-Path $root 'scripts/check_lockfile_platforms.py')
+if ($LASTEXITCODE -ne 0) {
+    throw 'The lockfile has no Windows native binaries; npm ci would install the JS wrappers without them and the Tauri CLI would fail to load. See the output above.'
+}
+
 if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
     Write-Warning @'
 No code-signing key is configured, so the installer will be unsigned.
@@ -50,7 +56,19 @@ See docs/PACKAGING.md.
 '@
 }
 
-# ── 1. Tests before artefacts ────────────────────────────────────────────
+# ── 1. Frontend dependencies ─────────────────────────────────────────────
+# Before the tests, not after: on a clean checkout there is no node_modules, so
+# `npm test` fails with "vitest is not recognised" and the old ordering reported
+# that as a test failure, which sent you looking at the tests instead of at the
+# install that never happened.
+Step 'Installing frontend dependencies'
+Push-Location $desktop
+try {
+    & npm ci
+    if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+} finally { Pop-Location }
+
+# ── 2. Tests before artefacts ────────────────────────────────────────────
 if (-not $SkipTests) {
     Step 'Running the core tests'
     Push-Location $core
@@ -67,7 +85,7 @@ if (-not $SkipTests) {
     } finally { Pop-Location }
 }
 
-# ── 2. The core sidecar ──────────────────────────────────────────────────
+# ── 3. The core sidecar ──────────────────────────────────────────────────
 if (-not $SkipCore) {
     Step 'Building the core (PyInstaller)'
     & python (Join-Path $root 'scripts/build_core.py')
@@ -79,19 +97,15 @@ if (-not (Test-Path $binaries) -or -not (Get-ChildItem $binaries -Filter 'jarvis
     throw "No core binary in $binaries. Run without -SkipCore."
 }
 
-# ── 3. The shell and the installer ───────────────────────────────────────
-Step 'Installing frontend dependencies'
+# ── 4. The shell and the installer ───────────────────────────────────────
+Step 'Building the installer (Tauri + NSIS)'
 Push-Location $desktop
 try {
-    & npm ci
-    if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
-
-    Step 'Building the installer (Tauri + NSIS)'
     & npm run tauri build
     if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed.' }
 } finally { Pop-Location }
 
-# ── 4. Report what was produced ──────────────────────────────────────────
+# ── 5. Report what was produced ──────────────────────────────────────────
 $nsis = Join-Path $desktop 'src-tauri/target/release/bundle/nsis'
 $installer = Get-ChildItem $nsis -Filter '*-setup.exe' -ErrorAction SilentlyContinue |
     Select-Object -First 1

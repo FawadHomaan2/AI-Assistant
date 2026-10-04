@@ -642,6 +642,36 @@ installed anywhere. Saying otherwise would be the exact failure this project
 spent twelve phases avoiding. `docs/PACKAGING.md` carries the checklist that
 would have to pass, with nothing ticked.
 
+**The first real build attempt happened, and it failed.** Merging to `main`
+let the `windows-build` job run for the first time (CI run 20, merge commit
+`d35c955`). The core froze and smoke-tested fine on Windows; `npm run tauri
+build` then died after one second with `Cannot find module
+'./cli.win32-x64-msvc.node'`.
+
+The cause was `apps/desktop/package-lock.json`, which had been generated on
+Linux and therefore recorded only the Linux native binaries. npm writes the
+optional dependencies it actually resolved, and with a tree already installed
+it reads that tree instead of the registry — so the lockfile kept
+`@tauri-apps/cli-linux-x64-*` and silently dropped all eleven other platforms.
+`npm ci` on Windows then installed the Tauri CLI's JavaScript wrapper with no
+native module behind it. `@rollup/rollup-win32-x64-msvc` and
+`@esbuild/win32-x64` were missing for the same reason and would have failed
+next, inside the frontend build Tauri invokes.
+
+This was invisible to every Linux job: the lockfile installs perfectly here.
+It is now asserted directly by `scripts/check_lockfile_platforms.py`, which
+runs in the frontend job and in `build_windows.ps1`, and which was confirmed to
+fail against the old lockfile rather than merely pass against the new one.
+
+The regenerated lockfile changed no package version and removed nothing; it
+added 55 entries, every one an optional binary for a platform other than this
+one. A simulated Windows install (`npm ci --os=win32 --cpu=x64`) fetches the
+16 MB `cli.win32-x64-msvc.node` that CI could not find, and the same command
+against the old lockfile reproduces the failure exactly.
+
+**That fixes a build error. It does not meet the gate.** No `.exe` has been
+produced yet and none has been installed anywhere.
+
 **What was verified here, on Linux:** the PyInstaller spec produces a working
 41 MB single-file binary; that binary starts, prints its handshake, applies all
 five migrations, answers `/health` and reports all 15 tools. The build script

@@ -4,12 +4,16 @@ Produces `AI-Assistant-Setup.exe`: a per-user NSIS installer containing the
 Tauri shell, the Python core as a single-file sidecar, and the reference
 plugin.
 
-> **The Phase 12 gate is not met.** The installer has never been built, because
-> this repository is authored in a Linux container and neither PyInstaller nor
-> the WebView2 shell cross-compiles. Everything below is written and
-> structurally tested; none of it has produced a `.exe`, and no `.exe` has been
-> installed on a clean Windows machine. The checklist at the end is what would
-> have to pass.
+> **The Phase 12 gate is not met.** No `.exe` exists and none has been installed
+> on a clean Windows machine. The checklist at the end is what would have to
+> pass; nothing on it is ticked.
+>
+> The first build attempt ran on CI when this work merged to `main`, and failed:
+> the lockfile had no Windows native binaries, so the Tauri CLI could not load
+> (`Cannot find module './cli.win32-x64-msvc.node'`). That is fixed and guarded
+> by `scripts/check_lockfile_platforms.py` — see **A lockfile is platform-shaped**
+> below. Fixing a build error is not the same as building, so this note stands
+> until a real installer exists.
 
 ---
 
@@ -66,6 +70,41 @@ The heavy optional dependencies are **excluded**: Whisper, Piper, ONNX Runtime,
 Playwright and the document readers. Each is a capability that already reports
 itself unavailable with a reason and an install command, so excluding one
 degrades a feature instead of crashing the core.
+
+---
+
+## A lockfile is platform-shaped
+
+`npm ci` is reproducible, which is why both CI and `build_windows.ps1` use it.
+It is reproducible per platform, though, not across them: npm records the
+optional dependencies it actually resolved, and when a tree is already installed
+it reads that tree rather than the registry. Regenerate the lockfile on Linux
+with `node_modules` present and it keeps `@tauri-apps/cli-linux-x64-*` and drops
+the other eleven platforms. Nothing looks wrong — it installs perfectly on
+Linux — until `npm ci` runs on Windows and installs a JavaScript wrapper with no
+native module behind it.
+
+That is what broke the first Windows build. It is checked explicitly now,
+because no Linux job can observe it by running `npm ci`:
+
+```powershell
+python scripts/check_lockfile_platforms.py
+```
+
+It runs in the CI frontend job and as a pre-flight step in
+`build_windows.ps1`. To regenerate the lockfile correctly, give npm no tree to
+read from:
+
+```powershell
+cd apps/desktop
+Move-Item node_modules $env:TEMP\nm ; Remove-Item package-lock.json
+npm install --package-lock-only
+Remove-Item -Recurse $env:TEMP\nm ; npm ci
+```
+
+The package count grows by about fifty. Those are other platforms' binaries,
+which npm skips at install time on any host they do not match — so a Windows
+install still fetches only Windows binaries.
 
 ---
 

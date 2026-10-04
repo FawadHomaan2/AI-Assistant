@@ -23,6 +23,13 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
+      # A lockfile regenerated on Linux keeps the Linux native binaries and
+      # drops every other platform's, which installs cleanly here and breaks
+      # only on Windows. This job cannot notice that by running npm ci, so the
+      # lockfile's contents are asserted directly.
+      - name: Lockfile carries every platform's native binaries
+        working-directory: .
+        run: python3 scripts/check_lockfile_platforms.py
       - run: npm ci
       - run: npm run typecheck
       - run: npm test

@@ -465,6 +465,36 @@ scanner. Code signing is part of Phase 12; see ARCHITECTURE.md §16 and §18.
 
 ---
 
+## When something does not work
+
+Run this and read the file it writes to your desktop:
+
+```powershell
+pwsh -File scripts/collect_diagnostics.ps1
+```
+
+It gathers the four places an answer hides, so you do not have to know which
+one: what the installed core says it can do (`--selfcheck`), which models are
+on disk (every voice feature needs three of them), the non-comment lines of
+`config.toml` (which provider is selected, and whether cloud is allowed), and
+the end of the log with every error and refusal in it.
+
+Nothing is uploaded and no credentials are read — API keys live in the Windows
+Credential Manager, never in `config.toml`. The file does name your install
+paths, so skim it before sending it on.
+
+Two things it is worth checking yourself first, because they explain most of
+what looks broken on a fresh install:
+
+- **Voice needs its models.** Settings → Voice → **Download them** (~141 MB),
+  then the *Listen for "Hey Jarvis" at startup* switch **and** the microphone
+  permission. All three, or it starts without listening.
+- **Cloud AI is off until you turn it on.** Settings → AI models → **Allow
+  cloud models**. A stored key is not consent, and the keyless relay presets
+  need it too.
+
+---
+
 ## Keyboard
 
 | | |

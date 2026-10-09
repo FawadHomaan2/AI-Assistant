@@ -67,10 +67,8 @@
         "type": "downloadBootstrapper"
       }
     },
-    "externalBin": [
-      "binaries/jarvis-core"
-    ],
     "resources": {
+      "binaries/jarvis-core": "core",
       "../../../plugins/word-count": "plugins/word-count"
     }
   },

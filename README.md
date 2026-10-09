@@ -449,9 +449,9 @@ reinstall.
 pwsh -File scripts/build_windows.ps1    # → apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
 ```
 Use the script rather than calling Tauri directly. `npm run tauri build` on its
-own fails: Tauri resolves the sidecar binary at compile time, so
-`jarvis-core-<target-triple>.exe` has to be frozen by PyInstaller and placed in
-`src-tauri/binaries/` *before* the bundle is built. The script does that in
+own fails: Tauri resolves the core's files at compile time, so the one-folder
+PyInstaller bundle has to exist at `src-tauri/binaries/jarvis-core/` *before*
+the bundle is built. The script does that in
 order, runs both test suites first, and refuses to produce an installer if
 either fails — an installer built from failing tests is worse than no installer,
 because it looks finished.

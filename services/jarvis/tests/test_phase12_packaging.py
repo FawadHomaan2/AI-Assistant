@@ -238,10 +238,38 @@ class TestBuildConfiguration:
         for extra in ("onnxruntime", "playwright", "torch", "faster_whisper"):
             assert extra in text
 
-    def test_the_tauri_config_ships_the_core_as_a_sidecar(self) -> None:
+    def test_the_tauri_config_ships_the_core_as_a_resource_folder(self) -> None:
+        """A tree, so `resources` rather than `externalBin`.
+
+        `externalBin` carries one renamed executable. The core is a one-folder
+        PyInstaller bundle whose executable finds `_internal` beside itself, so
+        shipping it that way would deliver the executable alone — an installer
+        that builds and then cannot start its own core.
+        """
         conf = json.loads((REPO / "apps" / "desktop" / "src-tauri" / "tauri.conf.json").read_text())
-        assert conf["bundle"]["externalBin"] == ["binaries/jarvis-core"]
+        assert "externalBin" not in conf["bundle"], (
+            "a one-folder bundle cannot ship as an externalBin"
+        )
+        assert conf["bundle"]["resources"]["binaries/jarvis-core"] == "core"
         assert conf["bundle"]["targets"] == ["nsis"]
+
+    def test_the_spec_builds_one_folder_rather_than_one_file(self) -> None:
+        """What kept startup at eight seconds.
+
+        A one-file bundle unpacks 600 MB to a temporary directory on every
+        launch before Python starts. Measured launch-to-handshake: 7.8-8.5 s
+        one-file against 1.2-1.4 s one-folder, with an unfrozen floor of
+        0.8-1.0 s — so almost all of it was extraction, not the app's own boot.
+
+        `EXE(exclude_binaries=True)` and `COLLECT` have to agree: without the
+        flag PyInstaller silently builds one-file again and the binaries land
+        in both places.
+        """
+        text = (REPO / "services" / "jarvis" / "jarvis-core.spec").read_text()
+        assert "COLLECT(" in text, "one-folder needs a COLLECT step"
+        assert "exclude_binaries=True" in text, (
+            "without this the EXE is still a self-extracting one-file bundle"
+        )
 
     def test_the_installer_runs_without_administrator_rights(self) -> None:
         """A per-user install is one fewer UAC prompt and one fewer reason to refuse."""
@@ -268,10 +296,43 @@ class TestBuildConfiguration:
         assert "def smoke_test" in text
         assert "handshake" in text
 
-    def test_the_build_script_names_the_binary_the_way_tauri_expects(self) -> None:
+    def test_the_build_script_puts_the_core_where_tauri_looks_for_it(self) -> None:
+        """The two have to name the same path, or the installer ships no core.
+
+        This used to assert the script computed a target triple, which is what
+        `externalBin` needed. The folder bundle does not get renamed, so what
+        matters now is agreement: `tauri.conf.json` declares a resource path
+        and `build_core.py` writes to one, and nothing else connects them. Get
+        it wrong and the build succeeds with an installer whose core is absent.
+        """
+        conf = json.loads((REPO / "apps" / "desktop" / "src-tauri" / "tauri.conf.json").read_text())
+        declared = next(
+            path for path in conf["bundle"]["resources"] if path.endswith("jarvis-core")
+        )
+        # Relative to src-tauri in the config; the script builds it from the
+        # repository root, so compare the resolved locations.
+        expected = (REPO / "apps" / "desktop" / "src-tauri" / declared).resolve()
+
+        script = (REPO / "scripts" / "build_core.py").read_text()
+        assert 'SIDECAR_DIR = ROOT / "apps" / "desktop" / "src-tauri" / "binaries"' in script
+        assert "destination = SIDECAR_DIR / NAME" in script
+        assert 'NAME = "jarvis-core"' in script
+        assert expected == (REPO / "apps/desktop/src-tauri/binaries/jarvis-core").resolve(), (
+            f"tauri.conf.json declares {declared}, which is not where build_core.py writes"
+        )
+
+    def test_the_build_script_copies_the_whole_tree(self) -> None:
+        """One file is not enough any more, and a merge is not safe.
+
+        The executable needs `_internal` beside it, so copying the binary
+        alone produces a core that cannot start. And the destination is
+        replaced rather than merged: a stale .pyd from an earlier build with
+        different dependencies gets loaded in preference to nothing and fails
+        a long way from the cause.
+        """
         text = (REPO / "scripts" / "build_core.py").read_text()
-        assert "target_triple" in text
-        assert "rustc" in text
+        assert "copytree" in text
+        assert "rmtree" in text
 
     def test_the_windows_script_refuses_to_build_on_failing_tests(self) -> None:
         text = (REPO / "scripts" / "build_windows.ps1").read_text()

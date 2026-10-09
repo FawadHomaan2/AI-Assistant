@@ -123,8 +123,9 @@ and checks the handshake, port and token), 71 frontend tests, strict `mypy`,
 `ruff`, `tsc`, `cargo clippy`, plus an end-to-end run against the real core over a
 real WebSocket: 72 streamed deltas, computer task intercepted, 4 turns persisted,
 audit chain intact, emergency stop honoured.
-**Needs Windows to verify:** sidecar spawn from the packaged `externalBin`, and
-the Credential Manager backend (`keyring` reports no usable backend headlessly).
+**Needs Windows to verify:** sidecar spawn from the packaged resource folder,
+and the Credential Manager backend (`keyring` reports no usable backend
+headlessly).
 
 ## Phase 3 — Filesystem & documents · **done**
 

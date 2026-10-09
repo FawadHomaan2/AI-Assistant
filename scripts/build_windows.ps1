@@ -119,9 +119,13 @@ if (-not $SkipCore) {
     if ($LASTEXITCODE -ne 0) { throw 'Core build failed.' }
 }
 
-$binaries = Join-Path $desktop 'src-tauri/binaries'
-if (-not (Test-Path $binaries) -or -not (Get-ChildItem $binaries -Filter 'jarvis-core-*.exe')) {
-    throw "No core binary in $binaries. Run without -SkipCore."
+# A folder, not a single renamed .exe: the core is a one-folder PyInstaller
+# bundle shipped through `resources`. Checking for the executable *inside* it,
+# since the folder existing with nothing in it is the failure that would
+# otherwise produce an installer with no core.
+$coreExe = Join-Path $desktop 'src-tauri/binaries/jarvis-core/jarvis-core.exe'
+if (-not (Test-Path $coreExe)) {
+    throw "No core executable at $coreExe. Run without -SkipCore."
 }
 
 # ── 5. The shell and the installer ───────────────────────────────────────

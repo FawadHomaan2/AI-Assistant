@@ -215,12 +215,30 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+# One *folder*, not one file. A one-file bundle is a self-extracting archive:
+# every launch unpacks the whole thing to a temporary directory before Python
+# starts, and this bundle is 600 MB unpacked. Measured on the same machine and
+# the same code, from launch to the handshake line the desktop app waits for:
+#
+#   one file    7.8 - 8.5 s
+#   one folder  1.2 - 1.4 s
+#   unfrozen    0.8 - 1.0 s   (the floor: imports and boot, no extraction)
+#
+# So the app's own startup was never the problem — it is already lazy about
+# onnxruntime and the rest. Nearly all of those seconds were extraction, paid
+# again on every single launch, and on Windows with Defender reading each
+# extracted DLL as it lands.
+#
+# The cost is disk: the unpacked tree ships as files instead of a compressed
+# archive, so the installed footprint grows. Eight seconds of a window that
+# cannot answer, every time, is the worse of the two.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    # The binaries and datas move to COLLECT below. Leaving this False here is
+    # what makes it a one-file build, so the two have to agree.
+    exclude_binaries=True,
     name="jarvis-core",
     debug=False,
     bootloader_ignore_signals=False,
@@ -236,4 +254,17 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+)
+
+
+#: The folder `dist-core/jarvis-core/` holding `jarvis-core[.exe]` and the
+#: `_internal` tree beside it. `scripts/build_core.py` copies the whole folder
+#: where Tauri can bundle it, and the executable only works from inside it.
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="jarvis-core",
 )

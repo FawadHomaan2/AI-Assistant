@@ -985,7 +985,7 @@ Stated plainly, because the honest version of this project has limits:
 ```text
  services/jarvis  ──PyInstaller(onedir)──▶  jarvis-core.exe + _internal/
                                                    │
- apps/desktop   ──vite build──▶ dist/              │ bundled as Tauri externalBin
+ apps/desktop   ──vite build──▶ dist/              │ bundled as a Tauri resource
                                    └──tauri build──┤
                                                    ▼
                                       AI-Assistant-Setup.exe   (NSIS, per-user)

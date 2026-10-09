@@ -57,11 +57,37 @@ port, token, pid — and talks to it over loopback HTTP. In a development
 checkout the shell falls back to running the Python package directly, so
 `npm run tauri dev` works without building the sidecar first.
 
-### Why one file, and why a console
+### Why one folder, and why a console
 
-`jarvis-core.exe` is a one-file PyInstaller build. A folder build starts faster
-but lays down a couple of thousand files, which an antivirus scans on first
-run and an installer has to track. One executable is also one thing to sign.
+`jarvis-core` is a **one-folder** PyInstaller build: an executable with an
+`_internal` tree beside it, shipped as a Tauri `resources` entry.
+
+It was one file, for the reasons this section used to give — a folder lays down
+a couple of thousand files for an antivirus to scan and an installer to track,
+and one executable is one thing to sign. What that reasoning missed is what a
+one-file bundle actually is: a self-extracting archive that unpacks **the whole
+600 MB** to a temporary directory before Python starts, on every single launch.
+Measured on one machine, same code, launch to the handshake line the desktop
+shell waits for:
+
+| Bundle | Launch → handshake |
+|---|---|
+| One file | 7.8 – 8.5 s |
+| One folder | 1.2 – 1.4 s |
+| Unfrozen, from the venv | 0.8 – 1.0 s |
+
+The unfrozen figure is the floor, and it says the core's own boot was never the
+problem — it is already lazy about onnxruntime, SciPy and the rest. Nearly all
+of those seconds were extraction, and they were paid again every time someone
+opened the app, which showed up as a window that appeared and then could not
+answer for eight seconds.
+
+The antivirus argument turns out to favour the folder, too. Those couple of
+thousand files exist either way; the difference is that a one-file bundle
+writes them to `%TEMP%` on *every* launch, where Defender reads each one as it
+lands, while a folder build writes them once at install time and is scanned
+once. The real cost is disk: the tree ships uncompressed, so the installed
+footprint grows. Eight seconds per launch is the worse of the two.
 
 It is built with `console=True`. The handshake is a line on stdout, and a
 windowed build on Windows has no stdout at all — the symptom is a core that

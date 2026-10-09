@@ -85,19 +85,35 @@ impl Sidecar {
 
 /// Locate the core executable.
 ///
-/// In a packaged build it sits beside the app as a Tauri `externalBin`. During
-/// development we fall back to running the Python package from the repo, so
-/// `tauri dev` works without a PyInstaller build first.
+/// In a packaged build it sits in `core/` under the resource directory: a
+/// one-folder PyInstaller bundle, shipped through `resources` rather than
+/// `externalBin`. It was one file until the extraction cost showed up as eight
+/// seconds of an unresponsive window on every launch, and a one-folder bundle
+/// is a tree, which `externalBin` does not carry.
+///
+/// `core/` first, then the old flat path, because an in-place update leaves the
+/// previous layout on disk and a core that cannot be found is a core that
+/// cannot report why.
+///
+/// During development we fall back to running the Python package from the repo,
+/// so `tauri dev` works without a PyInstaller build first.
 fn command(app: &AppHandle) -> Option<Command> {
-    // Packaged: <resource dir>/jarvis-core[.exe]
+    let name = if cfg!(windows) {
+        "jarvis-core.exe"
+    } else {
+        "jarvis-core"
+    };
     if let Ok(dir) = app.path().resource_dir() {
-        let exe = dir.join(if cfg!(windows) {
-            "jarvis-core.exe"
-        } else {
-            "jarvis-core"
-        });
-        if exe.exists() {
-            return Some(Command::new(exe));
+        for exe in [dir.join("core").join(name), dir.join(name)] {
+            if exe.exists() {
+                // From its own directory: the bundle finds `_internal` beside
+                // the executable, and inherits our working directory otherwise.
+                let mut cmd = Command::new(&exe);
+                if let Some(parent) = exe.parent() {
+                    cmd.current_dir(parent);
+                }
+                return Some(cmd);
+            }
         }
     }
 

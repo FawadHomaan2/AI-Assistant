@@ -12,9 +12,11 @@ reports it:
   1. **Checks the frozen binary actually starts** and prints its handshake.
      A PyInstaller build succeeds happily with a missing hidden import; the
      failure appears the first time a user launches it.
-  2. **Copies it where Tauri expects**, with the target triple suffix Tauri's
-     `externalBin` requires. Getting that name wrong produces an installer that
-     builds and then cannot find its own core.
+  2. **Copies it where Tauri expects.** The core is a one-folder PyInstaller
+     bundle, so it ships through `resources` rather than `externalBin` — the
+     latter carries a single renamed executable, and this is a tree whose
+     executable finds `_internal` beside itself. Getting the layout wrong
+     produces an installer that builds and then cannot start its own core.
   3. **Reports the size**, so a dependency that quietly adds 300 MB is noticed
      in the build log rather than in the download.
 """
@@ -28,7 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -42,29 +44,6 @@ NAME = "jarvis-core"
 
 #: How long the frozen binary gets to print its handshake before we call it broken.
 STARTUP_TIMEOUT = 45.0
-
-
-def target_triple() -> str:
-    """The suffix Tauri's `externalBin` appends, e.g. x86_64-pc-windows-msvc."""
-    out = subprocess.run(
-        ["rustc", "-vV"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    for line in out.stdout.splitlines():
-        if line.startswith("host:"):
-            return line.split(":", 1)[1].strip()
-    # Without rustc we can still guess the common cases rather than failing.
-    machine = {"AMD64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64"}.get(
-        platform.machine(), platform.machine()
-    )
-    system = {
-        "Windows": "pc-windows-msvc",
-        "Linux": "unknown-linux-gnu",
-        "Darwin": "apple-darwin",
-    }.get(platform.system(), "unknown")
-    return f"{machine}-{system}"
 
 
 def build() -> Path:
@@ -88,11 +67,23 @@ def build() -> Path:
     if result.returncode != 0:
         raise SystemExit("[core] PyInstaller failed")
 
-    produced = CORE / "dist-core" / (f"{NAME}.exe" if os.name == "nt" else NAME)
+    # A folder now, not a single file: see the comment on EXE in the spec.
+    # The executable only runs from inside it, with `_internal` beside it.
+    folder = CORE / "dist-core" / NAME
+    produced = folder / (f"{NAME}.exe" if os.name == "nt" else NAME)
     if not produced.exists():
-        raise SystemExit(f"[core] expected {produced} and it is not there")
-    print(f"[core] built {produced} ({produced.stat().st_size / 1_048_576:.0f} MB)")
+        raise SystemExit(
+            f"[core] expected {produced} and it is not there. "
+            "A one-file spec would have put the executable one level up, so "
+            "check that EXE(exclude_binaries=True) and COLLECT still agree."
+        )
+    size = sum(f.stat().st_size for f in folder.rglob("*") if f.is_file())
+    print(f"[core] built {folder} ({size / 1_048_576:.0f} MB over {_count(folder)} files)")
     return produced
+
+
+def _count(folder: Path) -> int:
+    return sum(1 for f in folder.rglob("*") if f.is_file())
 
 
 def smoke_test(binary: Path) -> None:
@@ -140,6 +131,27 @@ def smoke_test(binary: Path) -> None:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def _excluded_by_the_spec() -> set[str]:
+    """Top-level packages the spec's `excluded` list keeps out of the bundle.
+
+    Read from the spec rather than repeated here, so there is one list. Only
+    top-level names matter: `piper.hebrew` being excluded does not mean
+    `piper` is, and the check is about whole packages.
+
+    Parsed as source rather than imported, because a spec file is executed by
+    PyInstaller with globals it provides, so importing it here would fail.
+    """
+    spec = (CORE / "jarvis-core.spec").read_text(encoding="utf-8")
+    match = re.search(r"^excluded\s*=\s*\[(.*?)^\]", spec, re.S | re.M)
+    if not match:
+        # Not fatal: the worst case is the old behaviour, a build failed over a
+        # package that was never meant to be in it.
+        print("[core] warning: could not find `excluded` in the spec")
+        return set()
+    names = re.findall(r'"([^"]+)"', match.group(1))
+    return {name for name in names if "." not in name}
+
+
 def check_bundled_features(binary: Path) -> None:
     """Fail the build if a package present here did not make it into the bundle.
 
@@ -154,6 +166,13 @@ def check_bundled_features(binary: Path) -> None:
     the environment doing the build. So installing an extra is enough to
     require it in the bundle, and dropping one does not leave a stale
     assertion behind.
+
+    Minus what the spec deliberately leaves out. Playwright is excluded on
+    purpose — it needs a browser engine, so bundling the Python half alone
+    adds weight without making the feature work — and without reading that
+    list, anyone whose build environment happens to have the browser extra
+    installed got a failed build telling them to bundle a package the spec
+    says in a comment not to bundle.
     """
     sys.path.insert(0, str(CORE))
     try:
@@ -161,7 +180,14 @@ def check_bundled_features(binary: Path) -> None:
     finally:
         sys.path.pop(0)
 
-    expected = sorted(name for name in bundle.OPTIONAL_PACKAGES if bundle.available(name)[0])
+    deliberate = _excluded_by_the_spec()
+    expected = sorted(
+        name
+        for name in bundle.OPTIONAL_PACKAGES
+        if name not in deliberate and bundle.available(name)[0]
+    )
+    if deliberate:
+        print(f"[core] not bundled on purpose: {', '.join(sorted(deliberate))}")
     if not expected:
         print("[core] no optional packages installed here, so there is nothing to check")
         return
@@ -198,14 +224,26 @@ def check_bundled_features(binary: Path) -> None:
 
 
 def install(binary: Path) -> Path:
-    """Copy into place with the target-triple name Tauri's externalBin needs."""
+    """Copy the whole bundle folder to where Tauri bundles it as a resource.
+
+    The core used to be one file and shipped as an `externalBin`, which exists
+    to carry a single executable and renames it by target triple. A one-folder
+    bundle is a tree, so it ships through `resources` instead and keeps its own
+    name — the executable finds `_internal` by looking beside itself, so the
+    layout has to survive intact.
+    """
+    destination = SIDECAR_DIR / NAME
     SIDECAR_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = ".exe" if binary.suffix == ".exe" else ""
-    destination = SIDECAR_DIR / f"{NAME}-{target_triple()}{suffix}"
-    shutil.copy2(binary, destination)
-    destination.chmod(0o755)
-    print(f"[core] installed {destination.name}")
-    return destination
+    # Replaced wholesale rather than merged: a stale .pyd left behind by an
+    # earlier build with different dependencies is loaded in preference to
+    # nothing, and fails somewhere far from here.
+    shutil.rmtree(destination, ignore_errors=True)
+    shutil.copytree(binary.parent, destination)
+
+    installed = destination / binary.name
+    installed.chmod(0o755)
+    print(f"[core] installed {_count(destination)} files to {destination}")
+    return installed
 
 
 def main() -> int:

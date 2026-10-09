@@ -136,19 +136,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-      # Since Phase 12 the bundle declares the Python core as an `externalBin`,
-      # and Tauri's build script refuses to compile without the file present.
-      # This job compiles; it does not bundle, and building the real 40 MB
-      # sidecar here would add minutes to every push for a binary nothing runs.
-      # A placeholder satisfies the existence check. Nothing executes it: if it
-      # ever did, the empty file would fail loudly rather than silently pass.
+      # The bundle declares the Python core as a `resources` entry, and Tauri's
+      # build script refuses to compile without the path present. This job
+      # compiles; it does not bundle, and building the real core here would add
+      # minutes to every push for a binary nothing runs. A placeholder folder
+      # satisfies the existence check. Nothing executes it: if it ever did, the
+      # stub would fail loudly rather than silently pass.
+      #
+      # A folder, not a file, since the core became a one-folder PyInstaller
+      # bundle — a single file here would satisfy nothing and the mismatch
+      # would show up as a Tauri build error rather than as this step failing.
       - name: Place a stand-in for the core sidecar
         run: |
-          mkdir -p binaries
-          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p binaries/jarvis-core/_internal
           printf '#!/bin/sh\necho "placeholder; the real core comes from scripts/build_core.py" >&2\nexit 1\n' \
-            > "binaries/jarvis-core-$triple"
-          chmod +x "binaries/jarvis-core-$triple"
+            > binaries/jarvis-core/jarvis-core
+          chmod +x binaries/jarvis-core/jarvis-core
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri

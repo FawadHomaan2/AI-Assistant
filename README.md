@@ -265,6 +265,15 @@ For a conversation that reaches the vendor and nobody else, use `anthropic`,
 `openai_compat` or `google` with a key you own. For one that leaves no machine
 at all, use `ollama`.
 
+> **This depends on a web app that has to be published.** As of this release the
+> address above answers `403 Forbidden` to everything, including `/api/chat` —
+> the deployment is not public, so the three keyless presets will not work yet.
+> They are wired up and tested, and **Test** reports the refusal and says the web
+> app needs publishing rather than telling you to check a key that does not
+> exist. Publish that Lovable project, or set `base_url` to a deployment that is
+> public, and they start working with no further changes here. Until then, use a
+> preset with a key of your own, or Ollama.
+
 **OpenRouter is the one to reach for if you want to try many models** without an
 account for each — it speaks the OpenAI API, so it needs no new adapter:
 

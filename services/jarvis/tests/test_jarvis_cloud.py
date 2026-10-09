@@ -232,6 +232,35 @@ class TestFailuresAreExplained:
             await _collect(_provider())
         assert "elsewhere.test" in str(caught.value)
 
+    @pytest.mark.parametrize("status", [401, 403])
+    @respx.mock
+    async def test_a_refusal_does_not_send_anyone_looking_for_a_key(self, status: int) -> None:
+        """An unpublished deployment answers 403, and there is no key to check.
+
+        `_http.raise_for_status` reads 401 and 403 as bad credentials and says
+        to check the API key in Settings. That is right for every other
+        provider and actively misleading here: this adapter has no key field,
+        so the advice sends someone looking for something that does not exist
+        while the real cause — a private or unpublished web app — goes unsaid.
+        """
+        respx.post(CHAT).mock(return_value=httpx.Response(status, text="Forbidden"))
+        with pytest.raises(ProviderError) as caught:
+            await _collect(_provider())
+
+        message = str(caught.value)
+        assert "published" in message
+        assert "no API key to fix here" in message
+        assert "Check the API key in Settings" not in message
+
+    @pytest.mark.parametrize("status", [401, 403])
+    @respx.mock
+    async def test_health_explains_a_refusal_the_same_way(self, status: int) -> None:
+        respx.post(CHAT).mock(return_value=httpx.Response(status, text="Forbidden"))
+        ok, detail = await _provider().health()
+        assert not ok
+        assert "published" in detail
+        assert "no API key to fix here" in detail
+
     @respx.mock
     async def test_a_server_error_is_typed_as_unavailable(self) -> None:
         """Routed through `_http.raise_for_status` like every other provider.

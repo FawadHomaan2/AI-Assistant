@@ -120,11 +120,31 @@ class JarvisCloudProvider(Provider):
                 status=response.status_code,
             )
 
+    def _refusal(self, status: int) -> str:
+        """What a 401 or 403 means when there is no key to be wrong.
+
+        `_http.raise_for_status` reads these as bad credentials and says to
+        check the API key in Settings. For every other provider that is the
+        right advice; here there is no key field to check, and the actual cause
+        is at the other end — an unpublished or private deployment refuses the
+        request before it reaches any model. Sending someone to look for a key
+        that does not exist is worse than no message at all.
+        """
+        return (
+            f"{self.base_url} refused the request ({status}). The Jarvis web app has to be "
+            "published and its /api/chat endpoint publicly reachable; a private or "
+            "unpublished deployment answers exactly this way. There is no API key to fix "
+            "here — either publish that web app, point base_url at one that is, or use a "
+            "provider with a key of your own."
+        )
+
     async def stream(self, request: CompletionRequest) -> AsyncIterator[Chunk]:
         client = self._ensure_client()
         try:
             async with client.stream("POST", "/api/chat", json=self._payload(request)) as resp:
                 self._reject_redirect(resp)
+                if resp.status_code in (401, 403):
+                    raise ProviderError(self._refusal(resp.status_code), status=resp.status_code)
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode("utf-8", "replace")
                     _http.raise_for_status(resp, self.name, body)
@@ -175,6 +195,8 @@ class JarvisCloudProvider(Provider):
                 if 300 <= resp.status_code < 400:
                     where = resp.headers.get("location", "elsewhere")
                     return False, f"{self.base_url} redirects /api/chat to {where}."
+                if resp.status_code in (401, 403):
+                    return False, self._refusal(resp.status_code)
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode("utf-8", "replace").strip()[:200]
                     return False, (

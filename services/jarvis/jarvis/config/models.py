@@ -94,6 +94,11 @@ class ModelSpec:
     #: looks when voice does not work. Empty means there really is no way but
     #: by hand.
     prepare_route: str = ""
+    #: Why this one cannot be had at all, when the answer is not about the
+    #: download. Listing a model whose code does not exist yet and telling
+    #: someone to install it by hand promises them a feature that would still
+    #: not work once they had.
+    unavailable_note: str = ""
 
     @property
     def fetchable(self) -> bool:
@@ -112,7 +117,25 @@ class ModelSpec:
         return (base / self.folder / self.filename) if self.folder else base / self.filename
 
     def installed(self) -> bool:
-        return self.path().is_file()
+        """Whether this model is on disk.
+
+        A model Jarvis fetches itself lands at a path Jarvis chose, so the
+        check is that one file. A model its own library fetches lands wherever
+        that library puts it: faster-whisper writes a huggingface_hub cache
+        tree, `whisper/models--Systran--faster-whisper-base.en/snapshots/<id>/`,
+        and never the flat `whisper/model.bin` this used to look for. So the
+        Whisper row reported "not installed" permanently — including with the
+        model present and the voice pipeline reporting itself ready, which is
+        the state it was actually in.
+
+        `prepare_route` is exactly the set of models whose layout is not ours,
+        so it decides which question to ask rather than a second field that
+        has to be kept in step with it.
+        """
+        if not self.prepare_route:
+            return self.path().is_file()
+        folder = self.path().parent
+        return folder.is_dir() and any(f.is_file() for f in folder.rglob("*"))
 
     def to_dict(self) -> dict[str, Any]:
         present = self.installed()
@@ -137,6 +160,8 @@ class ModelSpec:
         """
         if present or self.fetchable:
             return ""
+        if self.unavailable_note:
+            return self.unavailable_note
         if self.prepare_route:
             return (
                 "This one is fetched by the library that uses it, which checks it "
@@ -233,6 +258,13 @@ CATALOGUE: tuple[ModelSpec, ...] = (
         size_mb=1,
         folder=_OWW_FOLDER,
     ),
+    # Listed because the interface should say what semantic search would need,
+    # not because downloading it would switch the feature on. `MiniLMEmbedder`
+    # in jarvis/memory/embeddings.py raises NotImplementedError from `embed()`:
+    # the ONNX session, tokeniser and mean-pooling are not written yet. So the
+    # generic "install it by hand" was a promise the code cannot keep — someone
+    # could fetch the 90 MB and still have word matching, with nothing saying
+    # why. `best_available()` falls back to the lexical embedder, which works.
     ModelSpec(
         key="minilm-l6-v2",
         name="all-MiniLM-L6-v2",
@@ -241,6 +273,11 @@ CATALOGUE: tuple[ModelSpec, ...] = (
         url="",
         size_mb=90,
         folder="minilm",
+        unavailable_note=(
+            "Searching memory by meaning is not built yet — the model runner is "
+            "unwritten, so downloading this would change nothing. Memory is "
+            "searched by word in the meantime, which works."
+        ),
     ),
 )
 

@@ -176,6 +176,7 @@ class JarvisCloudProvider(Provider):
             # Nothing to configure: there is no key to store and the address has
             # a default. Whether the relay answers is a question for `health()`.
             configured=True,
+            needs_key=False,
             detail=(
                 f"No API key needed — {self.base_url} holds one and relays to {self.model}. "
                 "Press Test to check it answers."

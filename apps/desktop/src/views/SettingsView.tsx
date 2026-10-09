@@ -4,7 +4,7 @@ import { Page, Explainer, Card } from './Page';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AiProviders } from '@/components/AiProviders';
 import { VoiceSettings } from '@/components/VoiceSettings';
-import { useStore, CURRENT_PHASE } from '@/state/store';
+import { useStore } from '@/state/store';
 import {
   checkForUpdate,
   getShellInfo,
@@ -142,7 +142,7 @@ export function SettingsView() {
   };
 
   return (
-    <Page title="Settings" subtitle={`Jarvis build — Phase ${CURRENT_PHASE}`}>
+    <Page title="Settings" subtitle={core.state === 'ready' ? `Jarvis ${core.health.version}` : 'Jarvis'}>
       <Explainer>
         API keys are never stored in configuration files and never written into
         this page. They go straight into Windows Credential Manager, and the

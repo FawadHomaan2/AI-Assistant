@@ -95,6 +95,7 @@ class OllamaProvider(Provider):
             tools=True,
             is_cloud=False,
             configured=True,
+            needs_key=False,
             detail=f"Local Ollama at {self.base_url}.",
         )
 

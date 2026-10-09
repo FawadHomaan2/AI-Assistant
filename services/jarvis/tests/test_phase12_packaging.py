@@ -56,12 +56,99 @@ class TestModelCatalogue:
         for spec in unfetchable:
             reason = str(spec.to_dict()["reason"])
             assert reason, f"{spec.key} must say why the list cannot fetch it"
-            if spec.prepare_route:
+            if spec.unavailable_note:
+                # A model whose code is not written yet. Telling someone to
+                # install it by hand promises a feature that would still not
+                # work once they had.
+                assert reason == spec.unavailable_note, spec.key
+                assert "by hand" not in reason, spec.key
+            elif spec.prepare_route:
                 # Say where it comes from, not "install it by hand".
                 assert "Voice panel" in reason, spec.key
                 assert "by hand" not in reason, spec.key
             else:
                 assert "no verified checksum" in reason, spec.key
+
+    def test_a_library_fetched_model_is_found_where_its_library_puts_it(self) -> None:
+        """Reported "not installed" forever, with the model sitting right there.
+
+        faster-whisper writes a huggingface_hub cache tree —
+        `whisper/models--Systran--faster-whisper-base.en/snapshots/<id>/model.bin`
+        — and never the flat `whisper/model.bin` the catalogue looked for. So
+        the Downloadable models list showed Whisper as missing while the Voice
+        panel beside it reported the pipeline ready, which is the state a
+        working install is actually in.
+        """
+        from jarvis.config import models, paths
+
+        # The autouse fixture in conftest already points data_dir at a tmp dir.
+        spec = models.BY_KEY["whisper-base-en"]
+        assert not spec.installed(), "nothing downloaded yet"
+
+        whisper = paths.data_dir() / "models" / "whisper"
+        real = whisper / "models--Systran--faster-whisper-base.en"
+        (real / "snapshots" / "abc123").mkdir(parents=True)
+        (real / "snapshots" / "abc123" / "model.bin").write_bytes(b"weights")
+
+        assert spec.installed(), "the model is on disk and has to be reported as present"
+        assert not spec.path().is_file(), (
+            "and not at the flat path — if it were, this test would pass for the wrong reason"
+        )
+
+    def test_an_empty_folder_is_not_mistaken_for_an_install(self) -> None:
+        """A directory gets created before anything lands in it."""
+        from jarvis.config import models, paths
+
+        (paths.data_dir() / "models" / "whisper" / "snapshots").mkdir(parents=True)
+        assert not models.BY_KEY["whisper-base-en"].installed()
+
+    def test_a_model_jarvis_fetches_itself_still_checks_its_exact_path(self) -> None:
+        """The looser check must not leak to models whose layout we do control.
+
+        Piper's folder holds two files; one arriving must not make the other
+        report itself present.
+        """
+        from jarvis.config import models, paths
+
+        piper = paths.data_dir() / "models" / "piper"
+        piper.mkdir(parents=True)
+        (piper / "en_US-lessac-medium.onnx.json").write_text("{}")
+
+        assert models.BY_KEY["piper-en-us-config"].installed()
+        assert not models.BY_KEY["piper-en-us"].installed(), (
+            "the voice itself is still missing, whatever else is in the folder"
+        )
+
+    def test_a_model_whose_code_is_unwritten_says_so(self) -> None:
+        """Rule 15: do not present something that does not work as working.
+
+        `MiniLMEmbedder.embed()` raises NotImplementedError — the ONNX runner
+        is not written. So the model list saying "install it by hand" offered
+        someone a 90 MB download that would leave memory searched by word
+        exactly as before, with nothing explaining why.
+        """
+        from jarvis.config import models
+
+        spec = models.BY_KEY["minilm-l6-v2"]
+        reason = str(spec.to_dict()["reason"])
+        assert "not built yet" in reason
+        assert "by hand" not in reason
+        # And it says what does happen instead, because that part works.
+        assert "by word" in reason
+
+    def test_the_note_matches_what_the_embedder_actually_does(self) -> None:
+        """If someone implements it, this test is what says to drop the note."""
+        import inspect
+
+        from jarvis.config import models
+        from jarvis.memory.embeddings import MiniLMEmbedder
+
+        source = inspect.getsource(MiniLMEmbedder.embed)
+        unwritten = "NotImplementedError" in source
+        assert bool(models.BY_KEY["minilm-l6-v2"].unavailable_note) is unwritten, (
+            "semantic search is implemented now, so the catalogue note saying it "
+            "is not should go, and the model needs a URL and a checksum"
+        )
 
     def test_an_obtainable_model_is_not_reported_as_a_dead_end(self) -> None:
         """`fetchable` and `obtainable` are different questions.

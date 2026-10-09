@@ -14,6 +14,7 @@ import {
   type ProviderPreset,
 } from '@/lib/api';
 import type { ProviderInfo } from '@/types';
+import { useStore } from '@/state/store';
 
 /**
  * Choosing and configuring the model Jarvis thinks with.
@@ -62,6 +63,10 @@ export function AiProviders() {
     key: '',
   });
 
+  // The app-wide provider list, so a change here is not invisible to the
+  // panels that read it.
+  const refreshProviders = useStore((s) => s.refreshProviders);
+
   const load = useCallback(async () => {
     const [p, r, a] = await Promise.all([providerPresets(), listProviders(), aiState()]);
     if (p.ok) setPresets(p.value);
@@ -92,9 +97,14 @@ export function AiProviders() {
         return false;
       }
       await load();
+      // The rest of the app keeps its own copy of the provider list, taken
+      // once when the core connected. Without this, a provider added here is
+      // missing from Settings' own "Providers the core reports" until the app
+      // is restarted — two panels disagreeing about what exists.
+      await refreshProviders();
       return true;
     },
-    [load],
+    [load, refreshProviders],
   );
 
   const applyPreset = (id: string) => {
@@ -187,13 +197,18 @@ export function AiProviders() {
                 </span>
                 <span className="datalist__v">
                   <StatusBadge
-                    label={row.configured ? 'Ready' : 'Needs a key'}
+                    label={row.configured ? 'Ready' : row.needsKey ? 'Needs a key' : 'Not ready'}
                     kind={row.configured ? 'ok' : 'blocked'}
                     title={row.detail}
                   />
                 </span>
                 <span className="datalist__v">
-                  {row.kind === 'dev_echo' ? null : (
+                  {/* Whether a key is part of this provider at all, which the
+                      core now answers. Testing `kind === "dev_echo"` hid the
+                      button for one keyless provider and missed the others:
+                      Ollama and the relay both offered to replace a key they
+                      never had. */}
+                  {!row.needsKey ? null : (
                     <button
                       type="button"
                       className="linkbtn"

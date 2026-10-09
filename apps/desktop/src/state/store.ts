@@ -172,6 +172,15 @@ interface AppState {
   providers: ProviderInfo[];
   sessionId: string | null;
   connectCore: () => Promise<void>;
+  /**
+   * Re-read the provider list from the core.
+   *
+   * `connectCore` fetched it once at startup and nothing refreshed it, so
+   * adding or removing a provider left the Settings list showing the state
+   * the app launched with — a provider you had just added was simply absent,
+   * with nothing saying the list was a snapshot.
+   */
+  refreshProviders: () => Promise<void>;
 
   // ── Chat ────────────────────────────────────────────────────────────────
   messages: ChatMessage[];
@@ -535,8 +544,7 @@ export const useStore = create<AppState>((set, get) => {
         detail: `provider: ${health.value.defaultProvider} · schema v${health.value.schemaVersion}`,
       });
 
-      const list = await api.providers();
-      if (list.ok) set({ providers: list.value });
+      await get().refreshProviders();
 
       await get().refreshVoice();
 
@@ -682,6 +690,13 @@ export const useStore = create<AppState>((set, get) => {
     voiceMic: { available: false, detail: '', listening: false, dropped: 0 },
     micScopeGranted: false,
     lastHeard: '',
+
+    refreshProviders: async () => {
+      const list = await api.providers();
+      // Left alone on failure: the previous list is more use than an empty
+      // one, and the core being briefly unreachable is not news here.
+      if (list.ok) set({ providers: list.value });
+    },
 
     refreshVoice: async () => {
       const res = await api.voiceStatus();

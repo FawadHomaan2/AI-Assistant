@@ -1,5 +1,5 @@
 import { Icon, type IconName } from './Icon';
-import { useStore, CURRENT_PHASE } from '@/state/store';
+import { useStore } from '@/state/store';
 import type { AssistantMode, ViewId } from '@/types';
 import './Sidebar.css';
 
@@ -24,6 +24,10 @@ export function Sidebar() {
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
   const stopped = useStore((s) => s.stopped);
+  // The version, not an internal phase number: "Phase 12" meant nothing to
+  // anyone running the app, and stayed at 12 across three releases.
+  const core = useStore((s) => s.core);
+  const version = core.state === 'ready' ? core.health.version : '';
 
   return (
     <nav className="sidebar" aria-label="Main navigation">
@@ -31,7 +35,7 @@ export function Sidebar() {
         <span className="sidebar__mark" aria-hidden="true">J</span>
         <span className="sidebar__name">
           Jarvis
-          <small>Phase {CURRENT_PHASE} · voice</small>
+          <small>{version !== '' ? `v${version}` : 'starting…'}</small>
         </span>
       </div>
 

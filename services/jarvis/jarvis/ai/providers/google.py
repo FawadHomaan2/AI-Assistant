@@ -190,6 +190,10 @@ class GoogleProvider(Provider):
             tools=False,
             is_cloud=True,
             configured=configured,
+            # Always: this is a vendor API and there is no keyless mode.
+            # Deriving it from whether a credential is configured would hide
+            # the Add key button exactly when no key has been set up yet.
+            needs_key=True,
             detail=("Ready." if configured else "No API key stored. Add one in Settings."),
         )
 

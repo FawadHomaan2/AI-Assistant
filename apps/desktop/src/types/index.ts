@@ -250,6 +250,14 @@ export interface ProviderInfo {
   tools: boolean;
   isCloud: boolean;
   configured: boolean;
+  /**
+   * Whether an API key is part of setting this provider up at all.
+   *
+   * Not the same as `!configured`: a local model and a keyless relay are both
+   * configured with no key. Offering to "replace" a key they never had sends
+   * someone to the credential store for nothing.
+   */
+  needsKey: boolean;
   detail: string;
 }
 

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AiProviders } from './AiProviders';
 import * as api from '@/lib/api';
+import { useStore } from '@/state/store';
 
 vi.mock('@/lib/api');
 
@@ -55,6 +56,7 @@ const ECHO = {
   tools: false,
   isCloud: false,
   configured: true,
+  needsKey: false,
   detail: 'Ready.',
 };
 
@@ -66,7 +68,21 @@ const CLAUDE_UNCONFIGURED = {
   tools: true,
   isCloud: true,
   configured: false,
+  needsKey: true,
   detail: 'No API key stored. Add one in Settings.',
+};
+
+/** Cloud, ready, and nothing to type: the combination the relay introduced. */
+const RELAY = {
+  name: 'jarvis_chatgpt',
+  kind: 'jarvis_cloud',
+  model: 'openai/gpt-6-astra',
+  streaming: true,
+  tools: false,
+  isCloud: true,
+  configured: true,
+  needsKey: false,
+  detail: 'No API key needed — the web app holds one.',
 };
 
 function state(over: Partial<api.AiState> = {}): api.AiState {
@@ -207,6 +223,48 @@ describe('AiProviders', () => {
     await user.click(screen.getByRole('button', { name: 'Add' }));
 
     expect(await screen.findByText(/Allow cloud models above before it will be used/)).toBeTruthy();
+  });
+
+  it('offers no key field for a cloud provider that takes no key', async () => {
+    // The relay is configured, cloud, and has nothing to type. Before
+    // `needsKey` the panel decided from `configured` alone, with a hardcoded
+    // exception for dev_echo — so this row offered "Replace key", sending
+    // someone to the credential store to replace a key that never existed.
+    mocked.providers.mockResolvedValue({ ok: true, value: [ECHO, RELAY] });
+    render(<AiProviders />);
+    await screen.findByText('jarvis_chatgpt');
+
+    expect(screen.queryByRole('button', { name: /replace key|add key/i })).toBeNull();
+  });
+
+  it('still offers one for a provider that does need a key', async () => {
+    // The other half: hiding the button whenever a key is absent would hide
+    // it exactly when it is needed.
+    mocked.providers.mockResolvedValue({ ok: true, value: [ECHO, CLAUDE_UNCONFIGURED] });
+    render(<AiProviders />);
+    await screen.findByText('anthropic');
+
+    expect(screen.getByRole('button', { name: /add key/i })).toBeTruthy();
+  });
+
+  it('refreshes the app-wide provider list after a change', async () => {
+    // `connectCore` read the list once at startup and nothing refreshed it,
+    // so Settings' own "Providers the core reports" kept showing the state
+    // the app launched with — a provider added here was simply missing from
+    // it until a restart, with two panels disagreeing about what exists.
+    const user = userEvent.setup();
+    useStore.setState({ providers: [] });
+    mocked.addProvider.mockResolvedValue({ ok: true, value: { providers: [] } });
+    mocked.providers.mockResolvedValue({ ok: true, value: [ECHO, RELAY] });
+
+    render(<AiProviders />);
+    await screen.findByText('dev_echo');
+    await user.selectOptions(screen.getByLabelText(/add a model provider/i), 'jarvis_claude');
+    await user.click(screen.getByRole('button', { name: /^Add$/ }));
+
+    await waitFor(() =>
+      expect(useStore.getState().providers.map((p) => p.name)).toContain('jarvis_chatgpt'),
+    );
   });
 
   it('points out a configured cloud provider that is being refused', async () => {

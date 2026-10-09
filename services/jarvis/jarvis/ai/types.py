@@ -92,4 +92,10 @@ class Capabilities:
     # False when the provider needs a credential it does not have, with `detail`
     # explaining what to do about it.
     configured: bool = True
+    # Whether an API key is part of setting this provider up at all. Distinct
+    # from `configured`: a local model and a keyless relay are both configured
+    # with no key, and offering to "replace" a key they never had sends someone
+    # to the credential store for nothing. The panel hid that button by testing
+    # `kind == "dev_echo"`, which missed Ollama and the relay.
+    needs_key: bool = False
     detail: str = ""

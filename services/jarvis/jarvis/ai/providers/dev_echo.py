@@ -68,6 +68,7 @@ class DevEchoProvider(Provider):
             tools=False,
             is_cloud=False,
             configured=True,
+            needs_key=False,
             detail="Development echo. Reflects input back; it is not a language model.",
         )
 

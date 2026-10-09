@@ -41,6 +41,10 @@ class ProviderOut(BaseModel):
     tools: bool
     is_cloud: bool
     configured: bool
+    #: Whether an API key is part of setting this one up at all. A local model
+    #: and a keyless relay are both configured without one, and the panel needs
+    #: to tell that apart from "configured because a key is stored".
+    needs_key: bool
     detail: str
 
 

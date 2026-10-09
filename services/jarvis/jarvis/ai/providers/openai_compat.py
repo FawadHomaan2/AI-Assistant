@@ -135,6 +135,7 @@ class OpenAICompatProvider(Provider):
             tools=True,
             is_cloud=self.is_cloud,
             configured=configured,
+            needs_key=needs_key,
             detail=(
                 "Ready."
                 if configured

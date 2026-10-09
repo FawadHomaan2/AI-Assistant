@@ -107,6 +107,7 @@ export async function providers(): Promise<ApiResult<ProviderInfo[]>> {
       tools: Boolean(p.tools),
       isCloud: Boolean(p.is_cloud),
       configured: Boolean(p.configured),
+      needsKey: Boolean(p.needs_key),
       detail: String(p.detail),
     })),
   };

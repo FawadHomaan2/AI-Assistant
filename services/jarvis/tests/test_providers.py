@@ -387,6 +387,60 @@ class TestGemini:
         assert caps.tools is False
 
 
+class TestWhetherAKeyIsEvenWanted:
+    """`needs_key` is what the panel shows an Add key button from.
+
+    It used to infer that from `configured`, with `kind == "dev_echo"` as the
+    one exception — so every other keyless provider offered to replace a key
+    it never had. Ollama did, and so did the relay, which is cloud, ready and
+    takes nothing to type.
+    """
+
+    def test_a_vendor_api_always_wants_one(self) -> None:
+        """Even with no credential configured — that is when it matters most.
+
+        Deriving this from whether a credential name is set would hide the
+        button in exactly the state where someone needs to press it.
+        """
+        from jarvis.ai.providers.anthropic import AnthropicProvider
+        from jarvis.ai.providers.google import GoogleProvider
+
+        for cls in (AnthropicProvider, GoogleProvider):
+            caps = cls("p", ProviderSettings(kind="anthropic")).capabilities()
+            assert caps.needs_key is True, cls.__name__
+            assert caps.configured is False, "and it is not usable without one"
+
+    def test_the_keyless_ones_do_not(self) -> None:
+        from jarvis.ai.gateway import build
+
+        for kind in ("dev_echo", "ollama", "jarvis_cloud"):
+            caps = build("p", ProviderSettings(kind=kind)).capabilities()
+            assert caps.needs_key is False, kind
+
+    def test_an_openai_shaped_endpoint_asks_only_when_it_is_remote(self) -> None:
+        """One adapter, two situations: OpenAI needs a key, LM Studio does not."""
+        remote = OpenAICompatProvider(
+            "openai", ProviderSettings(kind="openai_compat", base_url="https://api.openai.com/v1")
+        )
+        local = OpenAICompatProvider(
+            "lmstudio", ProviderSettings(kind="openai_compat", base_url="http://127.0.0.1:1234/v1")
+        )
+        assert remote.capabilities().needs_key is True
+        assert local.capabilities().needs_key is False
+
+    def test_no_provider_claims_to_be_ready_while_still_wanting_a_key(self) -> None:
+        """The pair has to stay coherent however a new adapter sets them."""
+        from typing import get_args
+
+        from jarvis.ai.gateway import build
+        from jarvis.config.settings import ProviderKind
+
+        for kind in get_args(ProviderKind):
+            caps = build("p", ProviderSettings(kind=kind)).capabilities()
+            if caps.needs_key:
+                assert not caps.configured, f"{kind} reports itself ready with no key stored for it"
+
+
 class TestEveryAdvertisedKindCanBeBuilt:
     """`ProviderKind` and the gateway registry have to agree.
 

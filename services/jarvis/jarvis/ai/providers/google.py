@@ -40,7 +40,9 @@ DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com"
 
 #: A sensible starting point, not an assertion about Google's current line-up.
 #: Override per provider in config.toml; `health()` checks it really exists.
-DEFAULT_MODEL = "gemini-2.0-flash"
+#: Was gemini-2.0-flash, whose line retires in October 2026 — exactly the drift
+#: the docstring above says not to guess at, which is why `health()` asks.
+DEFAULT_MODEL = "gemini-3.5-flash"
 
 
 class GoogleProvider(Provider):

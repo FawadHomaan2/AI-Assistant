@@ -59,7 +59,7 @@ from jarvis.voice.wake import OpenWakeWordDetector
 
 log = get_logger(__name__)
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 
 @dataclass

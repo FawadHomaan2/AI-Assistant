@@ -65,6 +65,9 @@ class TestPresets:
         by_id = {p["id"]: p for p in presets}
         # Named rather than counted, so adding a preset without a test is caught.
         assert set(by_id) == {
+            "jarvis_chatgpt",
+            "jarvis_claude",
+            "jarvis_gemini",
             "anthropic",
             "openai",
             "gemini",
@@ -81,6 +84,26 @@ class TestPresets:
         assert by_id["ollama"]["needs_key"] is False
         assert by_id["ollama"]["is_cloud"] is False
         assert by_id["local"]["is_cloud"] is False
+
+    async def test_the_keyless_relay_presets_need_no_key_but_are_still_cloud(self, client):
+        """No key is not the same as private, and the panel must not imply it is.
+
+        The relay presets are the only cloud entries with no credential, so
+        they are the ones where a missing `is_cloud` would quietly exempt a
+        conversation from the `allow_cloud` gate.
+        """
+        presets = (await client.get("/providers/presets")).json()["presets"]
+        relays = [p for p in presets if p["kind"] == "jarvis_cloud"]
+        assert len(relays) == 3
+
+        for preset in relays:
+            assert preset["needs_key"] is False, preset["id"]
+            assert preset["credential"] == "", preset["id"]
+            assert preset["is_cloud"] is True, preset["id"]
+            # Nothing here should read as private, so the note has to say where
+            # the conversation goes rather than only that it is free.
+            assert "relay" in preset["note"].lower(), preset["id"]
+            assert "sees what you send" in preset["note"], preset["id"]
 
     async def test_every_cloud_preset_says_where_to_get_a_key(self, client):
         """The point setup otherwise stalls at, for someone without a key."""

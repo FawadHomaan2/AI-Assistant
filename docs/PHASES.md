@@ -87,6 +87,22 @@ Shipped:
   double-quoted string, which fails with "Unescaped '\' in a string" and names
   a column rather than the setting. Anyone following that comment would have got
   a core that would not start.
+  `jarvis_cloud` is the fifth adapter and the odd one out: a relay rather than a
+  vendor. It posts the conversation to the Jarvis web app's `/api/chat`, which
+  holds the key, so it is the only cloud provider with nothing to configure —
+  and therefore the only one where `allow_cloud` is the single thing between a
+  fresh install and a third party. Its tests are mostly about that, and about
+  two failures the obvious implementation gets wrong. Its endpoint sits behind a
+  single-page app, which answers *every* path with its HTML shell and a 200: a
+  `GET /` health check passes for a web app with no chat function at all, and
+  the markup would be streamed back as the assistant's reply. So `health()`
+  posts to `/api/chat` and both paths reject a `text/html` response. A 3xx is
+  the other: redirects are deliberately not followed, since one could move a
+  request carrying the conversation to another host, and a redirect is not
+  `>= 400`, so without its own check it ends the stream with no text and no
+  error. Usage is reported as zero rather than estimated from the reply's
+  length — it goes to the same `tokens_out` column the vendor adapters fill
+  from the wire, where a guess is indistinguishable from a measurement.
 - **Privacy classes + egress gate:** `SENSITIVE` payloads raise rather than being
   filtered; cloud and file-content egress are separate opt-ins; secrets are
   redacted and payloads size-capped before any network call.

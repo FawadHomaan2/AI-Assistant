@@ -31,6 +31,20 @@ const PRESETS: api.ProviderPreset[] = [
     keyUrl: 'https://ollama.com/download',
     note: 'No key and no network.',
   },
+  // Cloud with no key: the combination that did not exist until the relay, and
+  // the one the dropdown could describe exactly like the local entry above.
+  {
+    id: 'jarvis_claude',
+    label: 'Claude (via Jarvis Cloud, no key)',
+    kind: 'jarvis_cloud',
+    model: 'anthropic/claude-sonnet-5',
+    baseUrl: '',
+    credential: '',
+    isCloud: true,
+    needsKey: false,
+    keyUrl: '',
+    note: 'Relayed through the Jarvis web app, which sees what you send.',
+  },
 ];
 
 const ECHO = {
@@ -113,7 +127,35 @@ describe('AiProviders', () => {
     await screen.findByText('dev_echo');
     // Served from PRESETS in the core, so adding one is a single entry there.
     expect(screen.getByRole('option', { name: /Claude — needs an API key/ })).toBeTruthy();
-    expect(screen.getByRole('option', { name: /Ollama.*no key needed/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Ollama.*stays on this machine/ })).toBeTruthy();
+  });
+
+  it('does not describe a keyless relay the way it describes a local model', async () => {
+    render(<AiProviders />);
+    await screen.findByText('dev_echo');
+
+    // Both need no key, and that is the whole of what they have in common: one
+    // never leaves the machine and the other goes through someone else's
+    // server. A dropdown that said "no key needed" for both would make the
+    // more private choice and the less private one read identically, at the
+    // moment the choice is made.
+    const relay = screen.getByRole('option', { name: /Jarvis Cloud/ });
+    const local = screen.getByRole('option', { name: /Ollama/ });
+    expect(relay.textContent).toMatch(/sends to the cloud/);
+    expect(local.textContent).toMatch(/stays on this machine/);
+    expect(relay.textContent).not.toMatch(/stays on this machine/);
+  });
+
+  it('says where a relayed conversation goes once it is chosen', async () => {
+    const user = userEvent.setup();
+    render(<AiProviders />);
+    await screen.findByText('dev_echo');
+
+    await user.selectOptions(screen.getByLabelText(/add a model provider/i), 'jarvis_claude');
+
+    expect(screen.getByText(/sees what you send/)).toBeTruthy();
+    // Nothing to type, so no key field should appear asking for one.
+    expect(screen.queryByLabelText('API key')).toBeNull();
   });
 
   it('prefills the fields when a service is chosen', async () => {

@@ -204,14 +204,15 @@ rejected with an explanation. The panel never reads a key back — it reports
 
 ### Connecting Claude, ChatGPT, Gemini and the rest
 
-Four adapters cover them, and **Settings → AI models** offers each one by name.
+Five adapters cover them, and **Settings → AI models** offers each one by name.
 The table below is the same set for anyone configuring it by hand: `config.toml`
 ships every block commented out — uncomment one, set `default` to its name, and
 set `allow_cloud = true`.
 
 | Service | `kind` | Notes |
 |---|---|---|
-| Claude | `anthropic` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
+| ChatGPT, Claude or Gemini with **no key** | `jarvis_cloud` | Relayed through the Jarvis web app, which holds the key — and sees what you send |
+| Claude | `anthropic` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` |
 | ChatGPT | `openai_compat` | `base_url = "https://api.openai.com/v1"` |
 | Gemini | `google` | Its own adapter — Gemini's wire format is neither of the others |
 | OpenRouter | `openai_compat` | One key, hundreds of models from many vendors |
@@ -229,6 +230,40 @@ kind = "anthropic"
 model = "claude-opus-5-5"
 credential = "jarvis/anthropic"   # the NAME of a credential entry, never the key
 ```
+
+#### Without a key of your own
+
+`jarvis_cloud` is the one cloud option that needs no key here. It posts the
+conversation to the Jarvis web app's `/api/chat`, which holds a key and forwards
+to whichever model the `model` field names — `openai/gpt-6-astra`,
+`anthropic/claude-sonnet-5`, `google/gemini-3.5-flash`.
+
+That is a different trade from the adapters above, and worth being clear about
+rather than reading "no key" as "free":
+
+- **The web app sees every prompt.** With your own key, the conversation reaches
+  the vendor and nobody else. Here there is an extra party in between.
+- **The quota is whoever published the web app's**, so rate limits and spend land
+  on them, not on you.
+- **The model names are the relay's**, not a vendor's. One that works against
+  OpenAI directly need not work here. Press **Test** and it says so.
+- **It is still a cloud provider.** `allow_cloud` gates it exactly as it gates
+  the rest, and sensitive requests never reach it at all.
+
+```toml
+[ai]
+default = "jarvis"
+allow_cloud = true
+
+[ai.providers.jarvis]
+kind = "jarvis_cloud"
+model = "openai/gpt-6-astra"
+# base_url = ""     # set only to point at a different deployment
+```
+
+For a conversation that reaches the vendor and nobody else, use `anthropic`,
+`openai_compat` or `google` with a key you own. For one that leaves no machine
+at all, use `ollama`.
 
 **OpenRouter is the one to reach for if you want to try many models** without an
 account for each — it speaks the OpenAI API, so it needs no new adapter:

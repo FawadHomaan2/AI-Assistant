@@ -471,12 +471,26 @@ class TestTheShippedPresets:
             provider = build(name, cfg)
             caps = provider.capabilities()
             assert caps.kind == cfg.kind, name
-            # Every cloud preset must report itself unconfigured rather than
-            # ready, since no key is stored — that is what makes the interface
-            # offer to add one instead of failing on first use.
-            if caps.is_cloud:
+            if not caps.is_cloud:
+                continue
+
+            # A cloud preset that needs a key must report itself unconfigured
+            # rather than ready, since none is stored — that is what makes the
+            # interface offer to add one instead of failing on first use.
+            if cfg.credential:
                 assert not caps.configured, f"{name} claims to be configured with no key"
                 assert "key" in caps.detail.lower(), name
+                continue
+
+            # A relay holds the key at the other end, so there is nothing to
+            # add and nothing to be unconfigured about. Its obligation is the
+            # opposite one: not to read as private just because it is free.
+            # `allow_cloud` still gates it — see the two tests below, which key
+            # off `is_cloud` and so cover this preset too.
+            assert caps.configured, f"{name} has no key to add, so it cannot be unconfigured"
+            assert not caps.detail.lower().startswith("ready"), (
+                f"{name} has contacted nothing yet and cannot claim to be ready"
+            )
 
     def test_the_cloud_presets_stay_switched_off(self) -> None:
         """Pasting a key into the config must not be enough to start sending
@@ -490,23 +504,38 @@ class TestTheShippedPresets:
         assert settings.ai.allow_cloud_content is False
         assert settings.ai.default == "dev_echo"
 
-    async def test_a_cloud_preset_is_refused_while_allow_cloud_is_false(self) -> None:
+    async def test_every_cloud_preset_is_refused_while_allow_cloud_is_false(self) -> None:
         """The privacy gate keys off `is_cloud`, so a new cloud adapter is
         covered the moment it declares itself one. Asserted rather than assumed,
-        because the cost of being wrong is a conversation leaving the machine."""
+        because the cost of being wrong is a conversation leaving the machine.
+
+        Every cloud preset in the shipped config, not one named here: a preset
+        needing no key has nothing else standing in the way, so this switch is
+        the only thing between a fresh install and a third party.
+        """
         import tomllib
 
-        from jarvis.ai.gateway import Gateway
+        from jarvis.ai.gateway import Gateway, build
         from jarvis.ai.types import CompletionRequest, Message
         from jarvis.config.settings import Settings
         from jarvis.util.errors import JarvisError
 
         data = tomllib.loads(self._uncommented())
-        data["ai"]["default"] = "gemini"
-        settings = Settings(**data)
-        assert settings.ai.allow_cloud is False
+        base = Settings(**data)
+        cloud = [n for n, c in base.ai.providers.items() if build(n, c).capabilities().is_cloud]
+        assert cloud, "the config should ship some cloud presets, or this test checks nothing"
+        # Derived from `is_cloud`, so a provider that stopped declaring itself
+        # one would drop out of the list rather than fail. Named here because
+        # the relay is the preset with nothing else in its way.
+        assert "jarvis_cloud" in {base.ai.providers[n].kind for n in cloud}
 
-        gateway = Gateway(settings)
-        with pytest.raises(JarvisError):
-            async for _ in gateway.stream(CompletionRequest(messages=[Message("user", "hello")])):
-                pass
+        for name in cloud:
+            settings = Settings(**{**data, "ai": {**data["ai"], "default": name}})
+            assert settings.ai.allow_cloud is False
+
+            gateway = Gateway(settings)
+            with pytest.raises(JarvisError):
+                request = CompletionRequest(messages=[Message("user", "hello")])
+                async for _ in gateway.stream(request):
+                    pass
+            await gateway.aclose()

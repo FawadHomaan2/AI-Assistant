@@ -279,6 +279,19 @@ jobs:
               echo 'a signing keypair; see `docs/UPDATES.md`.'
             fi
             echo
+            echo '## AI models'
+            echo
+            echo '**Settings → AI models** now offers ChatGPT, Claude and Gemini with no API'
+            echo 'key at all. They are relayed through the Jarvis web app, which holds a key'
+            echo 'and forwards the conversation — so that web app sees what you send, which an'
+            echo 'adapter talking to the vendor with your own key does not. Both kinds are in'
+            echo 'the list; the one you pick is the one that applies.'
+            echo
+            echo 'It is still a cloud provider: **Allow cloud models** gates it exactly as it'
+            echo 'gates the rest, and requests carrying credentials, security findings or audit'
+            echo 'records never reach it. For a conversation that leaves no machine at all,'
+            echo 'Ollama is in the same list.'
+            echo
             echo '## Voice'
             echo
             echo '"Hey Jarvis" works from this installer. The wake word, speech-to-text and'

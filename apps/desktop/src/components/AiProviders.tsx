@@ -352,7 +352,15 @@ export function AiProviders() {
           {(presets ?? []).map((preset) => (
             <option key={preset.id} value={preset.id}>
               {preset.label}
-              {preset.needsKey ? ' — needs an API key' : ' — no key needed'}
+              {/* "No key needed" is true of a local model and of a relay that
+                  holds someone else's key, and those are opposites as far as
+                  privacy goes. Said plainly here, because the dropdown is
+                  where the choice is made. */}
+              {preset.needsKey
+                ? ' — needs an API key'
+                : preset.isCloud
+                  ? ' — no key, but sends to the cloud'
+                  : ' — no key, stays on this machine'}
             </option>
           ))}
         </select>

@@ -28,6 +28,7 @@ ProviderKind = Literal[
     "google",
     "ollama",
     "llama_cpp",
+    "jarvis_cloud",
 ]
 AssistantMode = Literal["paused", "guarded", "assisted", "developer"]
 
@@ -95,29 +96,60 @@ class ProviderPreset(BaseModel):
 
 
 PRESETS: tuple[ProviderPreset, ...] = (
+    # The three relay presets come first because they are the only ones usable
+    # without going and getting a key, which is where setting this up otherwise
+    # stops. `note` says where the conversation goes: "no key" does not mean
+    # "stays here", and the panel shows it next to the label.
+    ProviderPreset(
+        id="jarvis_chatgpt",
+        label="ChatGPT (via Jarvis Cloud, no key)",
+        kind="jarvis_cloud",
+        model="openai/gpt-6-astra",
+        note="No key or account needed — the Jarvis web app holds one and relays "
+        "your conversation to OpenAI, so it sees what you send. Needs 'Allow cloud'.",
+    ),
+    ProviderPreset(
+        id="jarvis_claude",
+        label="Claude (via Jarvis Cloud, no key)",
+        kind="jarvis_cloud",
+        model="anthropic/claude-sonnet-5",
+        note="Relayed through the Jarvis web app, which sees what you send. "
+        "Also anthropic/claude-opus-5. Needs 'Allow cloud'.",
+    ),
+    ProviderPreset(
+        id="jarvis_gemini",
+        label="Gemini (via Jarvis Cloud, no key)",
+        kind="jarvis_cloud",
+        model="google/gemini-3.5-flash",
+        note="Relayed through the Jarvis web app, which sees what you send. "
+        "Also google/gemini-3.1-pro-preview. Needs 'Allow cloud'.",
+    ),
     ProviderPreset(
         id="anthropic",
-        label="Claude",
+        label="Claude (your own key)",
         kind="anthropic",
         model="claude-opus-5-5",
         credential="jarvis/anthropic",
         key_url="https://console.anthropic.com/settings/keys",
-        note="Also claude-sonnet-5-5 and claude-haiku-4-5.",
+        note="Also claude-sonnet-5-5 and claude-haiku-5-5.",
     ),
     ProviderPreset(
         id="openai",
-        label="ChatGPT",
+        label="ChatGPT (your own key)",
         kind="openai_compat",
-        model="gpt-4o",
+        model="gpt-5.4-mini",
         base_url="https://api.openai.com/v1",
         credential="jarvis/openai",
         key_url="https://platform.openai.com/api-keys",
     ),
     ProviderPreset(
         id="gemini",
-        label="Gemini",
+        label="Gemini (your own key)",
         kind="google",
-        model="gemini-2.0-flash",
+        # gemini-2.0-flash was the default here, and gemini-2.5-flash retires in
+        # October 2026. Health check lists what the key really reaches, so an ID
+        # that ages out reports itself rather than returning an opaque 404.
+        model="gemini-3.5-flash",
         credential="jarvis/gemini",
         key_url="https://aistudio.google.com/apikey",
         note="Health check lists the models your key actually reaches.",
@@ -341,16 +373,26 @@ kind = "dev_echo"
 # set it to anything the provider serves. Model names change faster than this
 # file, so the defaults are a starting point, not a promise.
 
-# Claude.
+# ChatGPT, Claude or Gemini with no key on this machine. `jarvis_cloud` posts
+# the conversation to the Jarvis web app, which holds a key and forwards it, so
+# that web app sees everything you send — it is an extra party the direct
+# providers below do not involve. It counts as a cloud provider, so
+# `allow_cloud` has to be true. `base_url` defaults to the published address.
+# [ai.providers.jarvis]
+# kind = "jarvis_cloud"
+# model = "openai/gpt-6-astra"    # or anthropic/claude-sonnet-5, google/gemini-3.5-flash
+# base_url = ""                   # set only to point at a different deployment
+
+# Claude, with a key you own. Nothing but Anthropic sees the conversation.
 # [ai.providers.anthropic]
 # kind = "anthropic"
-# model = "claude-opus-5-5"         # or claude-sonnet-5-5, claude-haiku-4-5
+# model = "claude-opus-5-5"         # or claude-sonnet-5-5, claude-haiku-5-5
 # credential = "jarvis/anthropic"   # name of the credential entry, not the key
 
-# ChatGPT.
+# ChatGPT, with a key you own.
 # [ai.providers.openai]
 # kind = "openai_compat"
-# model = "gpt-4o"
+# model = "gpt-5.4-mini"
 # base_url = "https://api.openai.com/v1"
 # credential = "jarvis/openai"
 
@@ -358,7 +400,7 @@ kind = "dev_echo"
 # GET /providers/health reports it, and names alternatives if the model is gone.
 # [ai.providers.gemini]
 # kind = "google"
-# model = "gemini-2.0-flash"
+# model = "gemini-3.5-flash"
 # credential = "jarvis/gemini"
 
 # OpenRouter — one key, many vendors' models behind an OpenAI-shaped API.

@@ -50,4 +50,6 @@ services/jarvis/.venv/
 # Build artefacts from scripts/build_core.py
 services/jarvis/dist-core/
 services/jarvis/build-core/
+services/jarvis/dist-*/
+services/jarvis/build-*/
 apps/desktop/src-tauri/binaries/

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBadge } from './StatusBadge';
-import { setVoiceSettings, voiceStatus, type VoiceStatus } from '@/lib/api';
+import {
+  fetchVoiceModels,
+  setVoiceSettings,
+  voiceStatus,
+  type VoiceStatus,
+} from '@/lib/api';
 
 /**
  * Whether Jarvis listens for its name from the moment it starts.
@@ -20,6 +25,12 @@ export function VoiceSettings() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  // Separate from `error`, which `load()` clears on every successful refresh.
+  // A download failure put its reason there and then the reload wiped it, so
+  // the button read as doing nothing at all — the very complaint this panel
+  // exists to answer.
+  const [downloadError, setDownloadError] = useState('');
 
   const load = useCallback(async () => {
     const res = await voiceStatus();
@@ -55,6 +66,39 @@ export function VoiceSettings() {
       setNote('Jarvis will listen for "Hey Jarvis" from the next launch.');
     } else {
       setNote('Jarvis will wait for the microphone button.');
+    }
+    await load();
+  };
+
+  /**
+   * Fetch the three models voice needs.
+   *
+   * This is the action that was missing. The model list could fetch the wake
+   * word and the Piper voice, but not the speech model — no catalogue URL, so
+   * no Download button — and readiness needs all three. There was no sequence
+   * of clicks in the shipped app that ended with a working wake word.
+   */
+  const download = async () => {
+    setDownloading(true);
+    setNote('');
+    setDownloadError('');
+    const res = await fetchVoiceModels();
+    setDownloading(false);
+
+    if (!res.ok) {
+      setDownloadError(res.message);
+      return;
+    }
+    const { installed, failed, ready } = res.value;
+    if (failed.length > 0) {
+      // Named individually: "the download failed" after several minutes and
+      // 141 MB is not something anyone can act on.
+      setDownloadError(failed.map((f) => `${f.model}: ${f.error}`).join(' '));
+    }
+    if (ready) {
+      setNote('Voice is ready. Turn on the switch above to listen from startup.');
+    } else if (installed.length > 0) {
+      setNote(`Downloaded ${installed.join(', ')}.`);
     }
     await load();
   };
@@ -116,6 +160,20 @@ export function VoiceSettings() {
               label={ready ? 'Ready' : 'Incomplete'}
               kind={ready ? 'ok' : 'attention'}
             />
+            {/* The row said what was missing and offered no way to get it.
+                Here rather than in the model list because the speech model is
+                not fetchable from there, and this is where someone looks when
+                the wake word does nothing. */}
+            {!ready ? (
+              <button
+                type="button"
+                className="linkbtn"
+                disabled={downloading}
+                onClick={() => void download()}
+              >
+                {downloading ? 'Downloading…' : 'Download them'}
+              </button>
+            ) : null}
           </span>
         </li>
         <li>
@@ -135,6 +193,9 @@ export function VoiceSettings() {
       </ul>
 
       {note !== '' ? <p className="card__note">{note}</p> : null}
+      {downloadError !== '' ? (
+        <p className="card__note card__note--warn">{downloadError}</p>
+      ) : null}
       {error !== '' ? <p className="card__note card__note--warn">{error}</p> : null}
       <p className="card__note">
         All three have to be true before Jarvis listens on its own: this setting, the

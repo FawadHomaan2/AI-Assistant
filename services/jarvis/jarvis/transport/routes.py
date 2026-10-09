@@ -645,6 +645,80 @@ async def voice_listen(request: Request) -> dict[str, object]:
     return {"listening": True, "state": ctx.voice.state.value}
 
 
+#: The catalogue keys the voice pipeline needs, in the order a person would
+#: want them: the cheap one first, so the wake word starts working before the
+#: 63 MB voice finishes. `models.fetch` pulls each one's `requires` itself, so
+#: the three openWakeWord graphs and Piper's JSON config come along.
+VOICE_MODEL_KEYS: tuple[str, ...] = ("openwakeword-hey-jarvis", "piper-en-us")
+
+
+@router.post("/voice/models/fetch")
+async def voice_fetch_models(request: Request) -> dict[str, object]:
+    """Download everything voice needs, in one request.
+
+    Voice needs three components and they were not obtainable the same way:
+    the wake word and the Piper voice come from `POST /models/{key}/fetch`,
+    while the speech model has no catalogue URL and only arrives through
+    `POST /voice/stt/prepare`. Nothing in the interface called that second
+    route, so the speech model stayed missing however many times someone
+    pressed Download in the model list — and `status().ready` needs all three,
+    so the wake word could never start.
+
+    Which models those are is decided here rather than in the interface: the
+    mapping from a pipeline component to a catalogue key is this module's
+    business, and a copy of it in TypeScript is a copy that can drift.
+
+    Partial success is reported, not raised. Fetching 141 MB over three
+    sources is exactly the operation where one part fails and the rest are
+    worth keeping, and a 500 would discard the two that worked.
+    """
+    import asyncio
+
+    ctx = _ctx(request)
+    done: list[str] = []
+    failed: list[dict[str, str]] = []
+
+    for key in VOICE_MODEL_KEYS:
+        spec = models.BY_KEY.get(key)
+        if spec is None:  # pragma: no cover - the constant above is checked by a test
+            failed.append({"model": key, "error": f"There is no model called {key!r}."})
+            continue
+        try:
+            await asyncio.to_thread(models.fetch, key)
+        except Exception as exc:
+            failed.append({"model": spec.name, "error": str(exc)})
+        else:
+            done.append(spec.name)
+
+    # Last, because it is the slowest and the one most likely to need the
+    # network for a while. The two above being in place already means a
+    # failure here still leaves the wake word closer to working.
+    try:
+        stt = await asyncio.to_thread(ctx.voice.stt.prepare)
+    except Exception as exc:
+        failed.append({"model": "Whisper speech model", "error": str(exc)})
+    else:
+        if stt.available:
+            done.append("Whisper speech model")
+        else:
+            failed.append({"model": "Whisper speech model", "error": stt.detail})
+
+    ctx.audit.append(
+        AuditEntry(
+            actor="user",
+            action="voice.models.fetch",
+            args_digest=AuditRepository.digest({"installed": done, "failed": len(failed)}),
+            decision="allowed",
+        )
+    )
+    return {
+        "installed": done,
+        "failed": failed,
+        "ready": ctx.voice.status().ready,
+        "reason": ctx.voice.unavailable_reason(),
+    }
+
+
 @router.post("/voice/stt/prepare")
 async def voice_prepare_stt(request: Request) -> dict[str, object]:
     """Download the speech recognition model, so listening can start.

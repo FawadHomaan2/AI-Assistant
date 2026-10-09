@@ -41,7 +41,23 @@ beforeEach(() => {
       listening: false,
     },
   });
+  mocked.fetchVoiceModels.mockResolvedValue({
+    ok: true,
+    value: {
+      installed: ['openWakeWord hey_jarvis', 'Piper en_US voice', 'Whisper speech model'],
+      failed: [],
+      ready: true,
+      reason: '',
+    },
+  });
 });
+
+const INCOMPLETE = {
+  ready: false,
+  reason:
+    'Voice is not ready: speech-to-text (74 MB); wake-word (4 MB). ' +
+    'About 78 MB would need downloading.',
+};
 
 describe('VoiceSettings', () => {
   it('shows the startup setting as off by default', async () => {
@@ -161,6 +177,107 @@ describe('VoiceSettings', () => {
       await screen.findByRole('checkbox', { name: /listen for .*hey jarvis.* at startup/i }),
     );
     expect(await screen.findByText('config.toml is not writable.')).toBeTruthy();
+  });
+
+  describe('getting the models', () => {
+    it('offers a download when they are incomplete', async () => {
+      // The whole bug: the panel named what was missing and gave no way to
+      // get it. The speech model is not fetchable from the model list, so
+      // there was no sequence of clicks that ended with a working wake word.
+      mocked.voiceStatus.mockResolvedValue({ ok: true, value: status(INCOMPLETE) });
+      render(<VoiceSettings />);
+      expect(await screen.findByRole('button', { name: /download them/i })).toBeTruthy();
+    });
+
+    it('does not offer one when voice is already ready', async () => {
+      render(<VoiceSettings />);
+      await screen.findByText('Ready');
+      expect(screen.queryByRole('button', { name: /download them/i })).toBeNull();
+    });
+
+    it('downloads all three in one request', async () => {
+      const user = userEvent.setup();
+      mocked.voiceStatus.mockResolvedValue({ ok: true, value: status(INCOMPLETE) });
+      render(<VoiceSettings />);
+      await user.click(await screen.findByRole('button', { name: /download them/i }));
+
+      // One call, not one per model: the core decides which models voice
+      // needs, so that mapping cannot drift from a copy kept here.
+      await waitFor(() => expect(mocked.fetchVoiceModels).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText(/voice is ready/i)).toBeTruthy();
+    });
+
+    it('says which model failed and why, not just that something did', async () => {
+      const user = userEvent.setup();
+      mocked.voiceStatus.mockResolvedValue({ ok: true, value: status(INCOMPLETE) });
+      mocked.fetchVoiceModels.mockResolvedValue({
+        ok: true,
+        value: {
+          installed: ['openWakeWord hey_jarvis'],
+          failed: [{ model: 'Piper en_US voice', error: 'Checksum did not match.' }],
+          ready: false,
+          reason: 'Voice is not ready: text-to-speech (63 MB).',
+        },
+      });
+      render(<VoiceSettings />);
+      await user.click(await screen.findByRole('button', { name: /download them/i }));
+
+      // After several minutes and tens of megabytes, "the download failed" is
+      // not something anyone can act on.
+      expect(await screen.findByText(/Piper en_US voice: Checksum did not match/)).toBeTruthy();
+    });
+
+    it('keeps what did arrive when part of it fails', async () => {
+      const user = userEvent.setup();
+      mocked.voiceStatus.mockResolvedValue({ ok: true, value: status(INCOMPLETE) });
+      mocked.fetchVoiceModels.mockResolvedValue({
+        ok: true,
+        value: {
+          installed: ['openWakeWord hey_jarvis'],
+          failed: [{ model: 'Piper en_US voice', error: 'Connection reset.' }],
+          ready: false,
+          reason: 'Voice is not ready: text-to-speech (63 MB).',
+        },
+      });
+      render(<VoiceSettings />);
+      await user.click(await screen.findByRole('button', { name: /download them/i }));
+
+      expect(await screen.findByText(/Downloaded openWakeWord hey_jarvis/)).toBeTruthy();
+    });
+
+    it('disables the button while it runs', async () => {
+      const user = userEvent.setup();
+      mocked.voiceStatus.mockResolvedValue({ ok: true, value: status(INCOMPLETE) });
+      type Result = Awaited<ReturnType<typeof api.fetchVoiceModels>>;
+      let release: (v: Result) => void = () => {};
+      mocked.fetchVoiceModels.mockReturnValue(
+        new Promise<Result>((resolve) => {
+          release = resolve;
+        }),
+      );
+      render(<VoiceSettings />);
+      const button = await screen.findByRole('button', { name: /download them/i });
+      await user.click(button);
+
+      // 141 MB with a live button and no label change is a second download
+      // one impatient click away, and nothing saying the first one started.
+      const busy = await screen.findByRole('button', { name: /downloading/i });
+      expect((busy as HTMLButtonElement).disabled).toBe(true);
+      release({ ok: true, value: { installed: [], failed: [], ready: true, reason: '' } });
+    });
+
+    it('surfaces an unreachable core rather than looking like a dead button', async () => {
+      const user = userEvent.setup();
+      mocked.voiceStatus.mockResolvedValue({ ok: true, value: status(INCOMPLETE) });
+      mocked.fetchVoiceModels.mockResolvedValue({
+        ok: false,
+        code: 'jarvis.no_core',
+        message: 'The Jarvis core is not running.',
+      });
+      render(<VoiceSettings />);
+      await user.click(await screen.findByRole('button', { name: /download them/i }));
+      expect(await screen.findByText('The Jarvis core is not running.')).toBeTruthy();
+    });
   });
 
   it('reports an unreachable core instead of an empty panel', async () => {

@@ -44,6 +44,10 @@ export function SettingsView() {
   const [models, setModels] = useState<ModelRow[] | null>(null);
   const [modelNote, setModelNote] = useState('');
   const [modelError, setModelError] = useState('');
+  // Which key is downloading. Without it the button stayed live through a
+  // 63 MB fetch, so nothing said anything was happening and a second click
+  // started the download again.
+  const [modelBusy, setModelBusy] = useState('');
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateError, setUpdateError] = useState('');
@@ -385,15 +389,27 @@ export function SettingsView() {
                   <button
                     type="button"
                     className="linkbtn"
+                    disabled={modelBusy !== ''}
                     onClick={async () => {
                       setModelError('');
+                      setModelBusy(m.key);
                       const res = await fetchModel(m.key);
-                      if (!res.ok) setModelError(`${m.name} could not be downloaded.`);
+                      setModelBusy('');
+                      // The reason, not just the fact. "could not be
+                      // downloaded" after several minutes and tens of
+                      // megabytes is not something anyone can act on.
+                      if (!res.ok) setModelError(`${m.name}: ${res.message}`);
                       void loadModels();
                     }}
                   >
-                    Download {m.sizeMb} MB
+                    {modelBusy === m.key ? 'Downloading…' : `Download ${m.sizeMb} MB`}
                   </button>
+                ) : m.prepareRoute !== '' ? (
+                  // Not fetchable from here, but not unavailable either — the
+                  // library that uses it downloads it. Showing "Unavailable"
+                  // made the speech model read as a dead end, which is how
+                  // voice came to be unreachable through the interface.
+                  <span className="datalist__note">Via the Voice panel</span>
                 ) : (
                   <StatusBadge label="Unavailable" kind="blocked" tone="muted" />
                 )}

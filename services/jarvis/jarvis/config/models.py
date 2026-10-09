@@ -88,10 +88,24 @@ class ModelSpec:
     #: mel-spectrogram front end and a speech-embedding model in addition to the
     #: wake word itself, and a wake word file on its own does nothing.
     requires: tuple[str, ...] = ()
+    #: For a model Jarvis cannot `fetch()` but can still obtain: the route that
+    #: does it. Without this, an unfetchable model reads as "install it by
+    #: hand" — which was wrong for Whisper, and wrong in the one place someone
+    #: looks when voice does not work. Empty means there really is no way but
+    #: by hand.
+    prepare_route: str = ""
 
     @property
     def fetchable(self) -> bool:
+        """Whether `fetch()` can download *and verify* this file itself.
+
+        Not the same as "obtainable": see `prepare_route`.
+        """
         return bool(self.url and self.sha256)
+
+    @property
+    def obtainable(self) -> bool:
+        return self.fetchable or bool(self.prepare_route)
 
     def path(self) -> Path:
         base = paths.data_dir() / "models"
@@ -109,16 +123,30 @@ class ModelSpec:
             "sizeMb": self.size_mb,
             "installed": present,
             "fetchable": self.fetchable,
+            "prepareRoute": self.prepare_route,
             "path": str(self.path()),
-            "reason": (
-                ""
-                if present or self.fetchable
-                else (
-                    "Jarvis has no verified checksum for this file, so it will not "
-                    "download it. Install it by hand, or see docs/PACKAGING.md."
-                )
-            ),
+            "reason": self._reason(present),
         }
+
+    def _reason(self, present: bool) -> str:
+        """Why this cannot be downloaded from the model list, if it cannot.
+
+        Three cases, not two. Conflating the last two is what made the speech
+        model a dead end: the list said "install it by hand" about a file
+        Jarvis will happily download, just not from here.
+        """
+        if present or self.fetchable:
+            return ""
+        if self.prepare_route:
+            return (
+                "This one is fetched by the library that uses it, which checks it "
+                "against the hashes its own registry publishes — so Jarvis does not "
+                "download it from here. Use the Voice panel in Settings."
+            )
+        return (
+            "Jarvis has no verified checksum for this file, so it will not "
+            "download it. Install it by hand, or see docs/PACKAGING.md."
+        )
 
 
 #: Everything Jarvis can use but does not ship. Sizes are approximate and are
@@ -141,6 +169,7 @@ CATALOGUE: tuple[ModelSpec, ...] = (
         url="",
         size_mb=74,
         folder="whisper",
+        prepare_route="/voice/stt/prepare",
     ),
     # Piper needs its JSON config beside the model: it carries the sample rate
     # and the phoneme map, and loading without it fails in a way that reads

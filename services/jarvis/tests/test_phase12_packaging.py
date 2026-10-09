@@ -41,11 +41,40 @@ class TestModelCatalogue:
             if not spec.sha256:
                 assert not spec.fetchable
 
-    def test_an_unverifiable_model_explains_itself(self) -> None:
-        unverifiable = [m for m in models.CATALOGUE if not m.fetchable]
-        assert unverifiable, "this test is about the current state of the catalogue"
-        for spec in unverifiable:
-            assert "no verified checksum" in spec.to_dict()["reason"]
+    def test_a_model_the_list_cannot_fetch_explains_itself(self) -> None:
+        """Two reasons, not one, and the difference decides what to do next.
+
+        This asserted "no verified checksum" for every unfetchable model,
+        which was the whole story only while unfetchable also meant
+        unobtainable. The speech model is fetched by faster-whisper itself,
+        so that message sent people off to install a file by hand that Jarvis
+        downloads perfectly well from the Voice panel — and the model list,
+        saying "Unavailable", was where voice looked like a dead end.
+        """
+        unfetchable = [m for m in models.CATALOGUE if not m.fetchable]
+        assert unfetchable, "this test is about the current state of the catalogue"
+        for spec in unfetchable:
+            reason = str(spec.to_dict()["reason"])
+            assert reason, f"{spec.key} must say why the list cannot fetch it"
+            if spec.prepare_route:
+                # Say where it comes from, not "install it by hand".
+                assert "Voice panel" in reason, spec.key
+                assert "by hand" not in reason, spec.key
+            else:
+                assert "no verified checksum" in reason, spec.key
+
+    def test_an_obtainable_model_is_not_reported_as_a_dead_end(self) -> None:
+        """`fetchable` and `obtainable` are different questions.
+
+        Conflating them is what made the speech model unreachable: the list
+        showed it as Unavailable, and the one route that downloads it was
+        never called by anything.
+        """
+        speech = models.BY_KEY["whisper-base-en"]
+        assert not speech.fetchable, "it has no checksum, so the list must not fetch it"
+        assert speech.obtainable, "but Jarvis can still get it"
+        assert speech.prepare_route == "/voice/stt/prepare"
+        assert speech.to_dict()["prepareRoute"] == "/voice/stt/prepare"
 
     def test_the_summary_adds_up_what_is_missing(self) -> None:
         summary = models.summary()

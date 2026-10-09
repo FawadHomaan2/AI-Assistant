@@ -632,6 +632,12 @@ export interface ModelRow {
   sizeMb: number;
   installed: boolean;
   fetchable: boolean;
+  /**
+   * Set when Jarvis cannot download this from the model list but can still
+   * get it another way. Unfetchable and unobtainable are different things,
+   * and treating them as one made the speech model look like a dead end.
+   */
+  prepareRoute: string;
   reason: string;
 }
 
@@ -650,6 +656,44 @@ export function listModels(): Promise<
 
 export function fetchModel(key: string): Promise<ApiResult<{ installed: boolean }>> {
   return request(`/models/${encodeURIComponent(key)}/fetch`, { method: 'POST' });
+}
+
+/**
+ * Download the speech model, which `fetchModel` cannot.
+ *
+ * faster-whisper resolves and fetches its own weights, so the catalogue entry
+ * carries no URL and no checksum and `fetchable` is false for it. The core has
+ * always had this route; nothing in this app called it, which left the speech
+ * model the one voice component with no way to obtain it. Voice needs all
+ * three, so the wake word could never start however many times you pressed
+ * Download in the model list.
+ */
+export function prepareSpeechModel(): Promise<
+  ApiResult<{ available: boolean; detail: string; ready: boolean; reason: string }>
+> {
+  return request('/voice/stt/prepare', { method: 'POST' });
+}
+
+export interface VoiceModelsResult {
+  /** Names of the models now in place. */
+  installed: string[];
+  /** One entry per model that did not arrive, with the reason. */
+  failed: { model: string; error: string }[];
+  ready: boolean;
+  reason: string;
+}
+
+/**
+ * Download every model voice needs — wake word, Piper voice and speech model.
+ *
+ * One call rather than three, and the core decides which models those are:
+ * the mapping from a pipeline component to a catalogue key belongs there, and
+ * a copy of it here is a copy that can drift. Reports partial success, since
+ * 141 MB over three sources is exactly where one part fails and the rest are
+ * still worth having.
+ */
+export function fetchVoiceModels(): Promise<ApiResult<VoiceModelsResult>> {
+  return request('/voice/models/fetch', { method: 'POST' });
 }
 
 export function auditLog(
